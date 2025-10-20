@@ -1,0 +1,24 @@
+/* styles.css */
+
+body {
+  background-color: #f8f9fa;
+}
+
+/* অতিরিক্ত কাস্টম স্টাইল এখানে যোগ করা যেতে পারে */
+.form-select {
+  width: 100%; /* মোবাইলের জন্য ডিফল্ট */
+}
+
+/* ক্যাপচা ইনপুট থেকে আপ/ডাউন অ্যারো লুকান */
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
