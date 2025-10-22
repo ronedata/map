@@ -15,14 +15,21 @@
 <body>
   <div class="container my-4">
     <!-- <header class="pb-3 mb-4 border-bottom">
-      <h1>Map Explorer</h1>
+      <h1>M Explorer</h1>
       <p class="text-body-secondary">ফোল্ডার সিলেক্ট করে তার ভেতরের ফাইল ও সাব-ফোল্ডার দেখুন।</p>
     </header> -->
 
     <main>
       <div class="card shadow-sm">
         <div class="card-body">
-          <div id="status" class="status text-body-secondary mb-3">লোড হচ্ছে...</div>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div id="status" class="status text-body-secondary">লোড হচ্ছে...</div>
+            <div class="d-flex gap-2">
+              <button id="resetBtn" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-arrow-clockwise"></i> রিসেট
+              </button>
+            </div>
+          </div>
           <div id="dropdownContainer" class="dropdown-container d-flex flex-column gap-2 mb-3"></div>
           <div id="progressContainer" class="progress-container" style="display: none;"></div>
           <ul id="fileContainer" class="list-group"></ul>
