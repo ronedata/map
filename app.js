@@ -6,7 +6,10 @@ const API_BASE = 'https://script.google.com/macros/s/AKfycbzlLhCx-_sL_TnV_wBOPic
 const statusEl = document.getElementById('status');
 const dropdownContainer = document.getElementById('dropdownContainer');
 const fileContainer = document.getElementById('fileContainer');
-const progressContainer = document.getElementById('progressContainer');
+const progressContainer = document.getElementById('progressContainer'); // Keep progressContainer for fetchChildren
+const resetBtn = document.getElementById('resetBtn');
+
+let localData = null; // To store data from division_districts.json
 
 /**
  * Fetch immediate children for a folderId
@@ -115,7 +118,7 @@ function createFileNode(file) {
   const startDownload = async () => {
     try {
       dlBtn.disabled = true;
-      showProgress(true, 'ফাইল ডাউনলোড এর জন্য প্রস্তুত করা হচ্ছে...');
+      showProgress(true, 'ফাইল ডাউনলোড এর জন্য রেডি করা হচ্ছে...');
       await downloadViaProxy(file.id, file.name);
     } catch (err) {
       // Using statusEl for download errors as alert is not preferred
@@ -237,8 +240,8 @@ function renderFiles(files, depth) {
     // Only show the "no files" message after selecting from the 4th dropdown (Survey Type, depth=3)
     if (depth === 3) {
       const li = document.createElement('li');
-      li.className = 'list-group-item text-center text-body-secondary';
-      li.textContent = 'এই ফোল্ডারে কোনো ফাইল নেই।';
+      li.className = 'list-group-item text-center text-danger fw-bold';
+      li.textContent = 'কোন ফাইল নেই।';
       fileContainer.appendChild(li);
     } else {
       fileContainer.innerHTML = ''; // Clear any previous message
@@ -258,8 +261,14 @@ function renderFiles(files, depth) {
   files.forEach(file => {
     const option = document.createElement('option');
     option.value = file.id;
-    // Show file name without extension
-    option.textContent = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+    
+    let displayName = file.name;
+    const lastDotIndex = file.name.lastIndexOf('.');
+    if (lastDotIndex !== -1) {
+      displayName = file.name.substring(0, lastDotIndex);
+    }
+    displayName = displayName.replace('_result_result', ''); // Remove "_result_result"
+    option.textContent = displayName;
     // Store file object in a data attribute
     option.dataset.file = JSON.stringify(file);
     select.appendChild(option);
@@ -349,12 +358,72 @@ function createDropdown(folders) {
     const allDropdowns = Array.from(dropdownContainer.querySelectorAll('select'));
     const currentDepth = allDropdowns.indexOf(selectEl);
 
+    const selectedFolderName = selectEl.options[selectEl.selectedIndex].text;
+
     try {
-      const selectedFolderName = selectEl.options[selectEl.selectedIndex].text;
-      const data = await fetchChildren(selectedFolderId, selectedFolderName);      
-      processFetchedData(data, currentDepth);
+      let data;
+
+      // বিভাগ নির্বাচন (depth 0) -> বিভাগ-ভিত্তিক JSON লোড করুন এবং জেলা দেখান
+      if (currentDepth === 0) {
+        setStatus(`'${selectedFolderName}' এর ডেটা লোড হচ্ছে...`, true);
+        const fileName = `data/${selectedFolderName}_full_data.json`;
+        const response = await fetch(fileName);
+        if (!response.ok) {
+          throw new Error(`'${fileName}' ফাইলটি পাওয়া যায়নি।`);
+        }
+        localData = await response.json(); // সম্পূর্ণ বিভাগের ডেটা লোড করুন
+        const divisionData = localData[selectedFolderName];
+        data = { name: selectedFolderName, folders: divisionData.districts, files: [] };
+        setStatus(`লোড সম্পন্ন: ${selectedFolderName}`);
+      } 
+      // জেলা নির্বাচন (depth 1) -> localData থেকে উপজেলা দেখান
+      else if (currentDepth === 1) {
+        setStatus(`'${selectedFolderName}' এর উপজেলা লোড হচ্ছে...`, true);
+        const divisionSelect = allDropdowns[0];
+        const divisionName = divisionSelect.options[divisionSelect.selectedIndex].text;
+        const districtData = localData[divisionName]?.districts.find(d => d.id === selectedFolderId);
+        data = { name: selectedFolderName, folders: districtData?.upazilas || [], files: [] };
+        setStatus(`লোড সম্পন্ন: ${selectedFolderName}`);
+      } 
+      // উপজেলা নির্বাচন (depth 2) -> localData থেকে সার্ভে টাইপ দেখান
+      else if (currentDepth === 2) {
+        setStatus(`'${selectedFolderName}' এর সার্ভে টাইপ লোড হচ্ছে...`, true);
+        const divisionSelect = allDropdowns[0];
+        const districtSelect = allDropdowns[1];
+        const divisionName = divisionSelect.options[divisionSelect.selectedIndex].text;
+        const districtId = districtSelect.value;
+        const upazilaData = localData[divisionName]?.districts.find(d => d.id === districtId)?.upazilas.find(u => u.id === selectedFolderId);
+        data = { name: selectedFolderName, folders: upazilaData?.survey_types || [], files: [] };
+        setStatus(`লোড সম্পন্ন: ${selectedFolderName}`);
+      }
+      // সার্ভে টাইপ নির্বাচন (depth 3) -> localData থেকে মৌজা (ফাইল) দেখান
+      else if (currentDepth === 3) {
+        setStatus(`'${selectedFolderName}' এর মৌজা ম্যাপ লোড হচ্ছে...`, true);
+        const divisionSelect = allDropdowns[0];
+        const districtSelect = allDropdowns[1];
+        const upazilaSelect = allDropdowns[2];
+        const divisionName = divisionSelect.options[divisionSelect.selectedIndex].text;
+        const districtId = districtSelect.value;
+        const upazilaId = upazilaSelect.value;
+        const upazilaData = localData[divisionName]?.districts.find(d => d.id === districtId)?.upazilas.find(u => u.id === upazilaId);
+        const surveyTypeData = upazilaData?.survey_types.find(st => st.id === selectedFolderId);
+        data = { name: selectedFolderName, folders: [], files: surveyTypeData?.mouzas || [] }; // Mouzas are files
+        setStatus(`লোড সম্পন্ন: ${selectedFolderName}`);
+      } else {
+        // সার্ভে টাইপ নির্বাচন (depth 3) -> localData থেকে মৌজা (ফাইল) দেখান
+        // অথবা অন্য কোনো গভীরতার জন্য API কল করুন
+        data = await fetchChildren(selectedFolderId, selectedFolderName);
+      }
+
+      // ডেটা প্রসেস করুন
+      fileContainer.innerHTML = ''; // Clear previous file list or messages
+      renderFiles(data.files, currentDepth);
+      if (data.folders && data.folders.length > 0) {
+        createDropdown(data.folders);
+      }
+
     } catch (err) {
-      // Error is already handled in fetchChildren and setStatus
+      setStatus('এরর: ' + err.message);
       console.error("Failed to process selection:", err);
     } finally {
       toggleDropdowns(false); // Re-enable all dropdowns
@@ -362,15 +431,6 @@ function createDropdown(folders) {
   });
 
   dropdownContainer.appendChild(select);
-}
-
-
-function processFetchedData(data, depth) {
-  fileContainer.innerHTML = ''; // Clear previous file list or messages
-  renderFiles(data.files, depth);
-  if (data.folders && data.folders.length > 0) {
-    createDropdown(data.folders);
-  }
 }
 
 /**
@@ -396,11 +456,16 @@ function toggleDropdowns(disabled) {
 async function init() {
   toggleDropdowns(true);
   try {
-    setStatus('বিভাগ লোড করা হচ্ছে...', true);
-    const rootData = await fetchChildren();
-
-    // শুধুমাত্র প্রথম ড্রপডাউনটি রেন্ডার করুন, ফাইলগুলো নয়।
-    createDropdown(rootData.folders);
+    setStatus('বিভাগ লোড হচ্ছে...', true);
+    localData = null; // Reset local data on init
+    // Fetch initial division data from local division.json
+    const response = await fetch('data/division.json');
+    if (!response.ok) {
+      throw new Error(`division.json ফাইলটি লোড করা যায়নি: ${response.statusText}`);
+    }
+    const divisionJson = await response.json();
+    
+    createDropdown(divisionJson.data.folders);
 
     setStatus('শুরু করতে বিভাগ নির্বাচন করুন।');
   } catch (err) {
@@ -410,4 +475,16 @@ async function init() {
   }
 }
 
+/**
+ * Resets the application to its initial state.
+ */
+function resetApp() {
+  dropdownContainer.innerHTML = '';
+  fileContainer.innerHTML = '';
+  progressContainer.style.display = 'none';
+  progressContainer.innerHTML = '';
+  init(); // Re-initialize the app
+}
+
 init();
+resetBtn.addEventListener('click', resetApp);
