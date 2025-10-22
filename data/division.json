@@ -1,0 +1,58 @@
+{
+  "success": true,
+  "data": {
+    "id": "1T1GWNPpszx44Mj42u7tLXaP3ac3t4yRb",
+    "name": "মৌজা ম্যাপ ফাইল",
+    "folders": [
+      {
+        "id": "1pvBIK0d4wznQMLD84k2D9PuZu-JT7SbV",
+        "name": "রংপুর বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1Bb2pXyY6tb40jKlTArrWf8_loeferHzh",
+        "name": "রাজশাহী বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1rEbNJQ9uBVUJdnq4bokbMSSaU1UWtbZV",
+        "name": "ঢাকা বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1x5M7OxTycy3P8FjHbT07ZSwNV4xug9Jj",
+        "name": "চট্টগ্রাম বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1gihuo8gtXxi5CpBxJR-jmaB1igPXPSAo",
+        "name": "খুলনা বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1E7cVwhdNZuDS5MlqQgY3FI1iWjC6mFOz",
+        "name": "ময়মনসিংহ বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1onqdMV2pvh91kBsTDiLuSsbuRrAgnAj7",
+        "name": "সিলেট বিভাগ",
+        "type": "folder"
+      },
+      {
+        "id": "1hrNUDKAPf7C0IY704zql7Yjic_SfQshJ",
+        "name": "বরিশাল বিভাগ",
+        "type": "folder"
+      }
+    ],
+    "files": [
+      {
+        "id": "1YFsOcwzuLSFhw_xpiB1BM4JyRWSKTD8_",
+        "name": "এটাতে ক্লিক করবেন না",
+        "mimeType": "application/vnd.google-apps.shortcut",
+        "size": 0,
+        "url": "https://drive.google.com/file/d/1YFsOcwzuLSFhw_xpiB1BM4JyRWSKTD8_/view?usp=drivesdk"
+      }
+    ]
+  }
+}
