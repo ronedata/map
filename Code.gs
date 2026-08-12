@@ -10,16 +10,24 @@
 // ⚠️ কোড বদলানোর পর: Deploy → Manage deployments → পেন্সিল আইকন →
 //    Version: New version → Deploy। এতে ঠিকানা একই থাকে।
 //    "New deployment" দিলে নতুন ঠিকানা তৈরি হবে আর সাইট ভেঙে যাবে।
+//
+// ⚠️ এই সংস্করণে UrlFetchApp যোগ হয়েছে (বড় ফাইল টুকরো করে আনার জন্য), তাই
+//    নতুন অনুমতি লাগবে। ডিপ্লয়ের আগে একবার এডিটরে গিয়ে authorize() ফাংশনটি
+//    Run করুন — Google অনুমতি চাইবে, দিয়ে দিন। নইলে বড় ফাইল আসবে না।
 // =============================================================================
 
 /** ম্যাপের সবচেয়ে উপরের (root) ফোল্ডার */
 const DEFAULT_FOLDER_ID = '1T1GWNPpszx44Mj42u7tLXaP3ac3t4yRb';
 
+/** এক অনুরোধে সর্বোচ্চ কত বাইট পাঠানো যাবে (base64 এ ১.৩৩× বাড়ে) */
+const MAX_CHUNK = 12 * 1024 * 1024;
+
 /**
  * সমর্থিত অনুরোধ:
- *   ?action=download&fileId=…              → ফাইলের বাইট base64 এ
- *   ?action=listChildren&folderId=…        → ওই ফোল্ডারের ভেতরের নাম-তালিকা
- *   ?action=ping                           → সার্ভার সাড়া দিচ্ছে কি না
+ *   ?action=download&fileId=…                  → পুরো ফাইল, base64 এ
+ *   ?action=download&fileId=…&start=0&len=…    → ফাইলের একটি টুকরো
+ *   ?action=listChildren&folderId=…            → ফোল্ডারের ভেতরের নাম-তালিকা
+ *   ?action=ping                               → সার্ভার সাড়া দিচ্ছে কি না
  */
 function doGet(e) {
   try {
@@ -32,7 +40,9 @@ function doGet(e) {
 
     if (action === 'download') {
       if (!params.fileId) return json({ success: false, error: 'fileId দেওয়া হয়নি' });
-      return proxyDownload(params.fileId);
+      return (params.len !== undefined)
+        ? downloadChunk(params.fileId, Number(params.start) || 0, Number(params.len))
+        : downloadWhole(params.fileId);
     }
 
     if (action === 'listchildren') {
@@ -52,6 +62,18 @@ function json(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * বিশাল base64 স্ট্রিংটা JSON.stringify() দিয়ে গেলে তার আরেকটি কপি তৈরি হয়,
+ * অর্থাৎ মেমরিতে দুবার থাকে। তাই উত্তরটি হাতে জোড়া হচ্ছে — base64 এর
+ * অক্ষরগুলোয় (A–Z a–z 0–9 + / =) JSON এ পালানোর মতো কিছু নেই, তাই নিরাপদ।
+ */
+function payload(fields, encoded) {
+  let s = '{"success":true,"data":{';
+  for (const k in fields) s += JSON.stringify(k) + ':' + JSON.stringify(fields[k]) + ',';
+  s += '"base64":"' + encoded + '"}}';
+  return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
@@ -86,23 +108,78 @@ function listChildren(folderId) {
 }
 
 /**
- * ফাইলের বাইট base64 এ ফেরত দেয়।
- * উত্তরের গড়ন আগের মতোই: { success, data: { fileName, mimeType, size, base64 } }
- *
- * মেমরি: একই ফাইল যেন বারবার কপি না হয়। JSON.stringify() দিলে বিশাল base64
- * স্ট্রিংটার আরেকটি কপি তৈরি হতো, তাই উত্তরটি হাতে জোড়া হচ্ছে — base64 এর
- * অক্ষরগুলোয় (A–Z a–z 0–9 + / =) JSON এ পালানোর মতো কিছু নেই, তাই নিরাপদ।
+ * পুরো ফাইল এক অনুরোধে। ছোট ফাইলের (৯৯.৯%) জন্য এটিই ব্যবহৃত হয় —
+ * পুরনো পথ, তাই আচরণ অপরিবর্তিত।
  */
-function proxyDownload(fileId) {
+function downloadWhole(fileId) {
   const file = DriveApp.getFileById(fileId);
   const blob = file.getBlob();
   const encoded = Utilities.base64Encode(blob.getBytes());
+  return payload({
+    fileName: file.getName(),
+    mimeType: blob.getContentType() || 'application/octet-stream',
+    size: file.getSize()
+  }, encoded);
+}
 
-  const body = '{"success":true,"data":{'
-    + '"fileName":' + JSON.stringify(file.getName())
-    + ',"mimeType":' + JSON.stringify(blob.getContentType() || 'application/octet-stream')
-    + ',"size":' + file.getSize()
-    + ',"base64":"' + encoded + '"}}';
+/**
+ * ফাইলের একটি টুকরো — [start, start+len)।
+ *
+ * DriveApp দিয়ে ফাইলের অংশ পড়া যায় না, পুরোটা মেমরিতে তুলতে হয়; ৯০৫ MB এর
+ * ফাইলে তা অসম্ভব। তাই Drive API কে Range হেডার দিয়ে ডাকা হচ্ছে — কেবল
+ * চাওয়া বাইটগুলোই আসে, মেমরিও টুকরোর সমান থাকে।
+ *
+ * উত্তরে start/len/eof থাকে, যাতে ক্লায়েন্ট বুঝতে পারে টুকরো পেয়েছে
+ * (পুরনো সংস্করণ এগুলো পাঠাত না)।
+ */
+function downloadChunk(fileId, start, len) {
+  if (!(len > 0)) return json({ success: false, error: 'len ঠিক নেই' });
+  if (len > MAX_CHUNK) len = MAX_CHUNK;
 
-  return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
+  const file = DriveApp.getFileById(fileId);
+  const size = file.getSize();
+  if (start >= size) return json({ success: false, error: 'start ফাইলের আকারের বাইরে' });
+  if (start + len > size) len = size - start;
+
+  const res = UrlFetchApp.fetch(
+    'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId)
+      + '?alt=media&supportsAllDrives=true',
+    {
+      method: 'get',
+      headers: {
+        Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+        Range: 'bytes=' + start + '-' + (start + len - 1)
+      },
+      muteHttpExceptions: true
+    });
+
+  const code = res.getResponseCode();
+  // ২০৬ = আংশিক (যা চাই), ২০০ = পুরোটা পাঠিয়ে দিয়েছে
+  if (code !== 206 && code !== 200) {
+    return json({ success: false, error: 'Drive সাড়া দেয়নি (' + code + ')' });
+  }
+  let bytes = res.getContent();
+  if (code === 200 && bytes.length > len) bytes = bytes.slice(start, start + len);
+
+  return payload({
+    fileName: file.getName(),
+    mimeType: file.getMimeType() || 'application/octet-stream',
+    size: size,
+    start: start,
+    len: bytes.length,
+    eof: (start + bytes.length) >= size
+  }, Utilities.base64Encode(bytes));
+}
+
+/**
+ * অনুমতি নেওয়ার জন্য — এডিটরে একবার Run করুন।
+ * নতুন স্কোপ দুটি: Drive পড়া (আগেই ছিল) ও বাইরের ঠিকানায় অনুরোধ (নতুন)।
+ */
+function authorize() {
+  DriveApp.getFolderById(DEFAULT_FOLDER_ID).getName();
+  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=kind', {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+  Logger.log('অনুমতি ঠিক আছে — এবার Deploy → Manage deployments → New version');
 }
