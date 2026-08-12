@@ -107,12 +107,25 @@ function listChildren(folderId) {
   return result;
 }
 
+/** এক অনুরোধে পুরো ফাইল দেওয়ার সর্বোচ্চ আকার (এর বড় হলে টুকরো করে নিতে হবে) */
+const WHOLE_LIMIT = 40 * 1024 * 1024;
+
 /**
  * পুরো ফাইল এক অনুরোধে। ছোট ফাইলের (৯৯.৯%) জন্য এটিই ব্যবহৃত হয় —
  * পুরনো পথ, তাই আচরণ অপরিবর্তিত।
+ *
+ * বড় ফাইলে এখানে ঢুকতে দেওয়া হয় না: DriveApp পুরোটা মেমরিতে তোলে, তাতে
+ * স্ক্রিপ্ট আটকে গিয়ে কোটা নষ্ট হয়। সীমাটি পুরনো ক্লায়েন্টের ৩৫ MB এর
+ * চেয়ে বেশি রাখা হয়েছে, যাতে ক্যাশে থাকা পুরনো পাতাও ভেঙে না যায়।
  */
 function downloadWhole(fileId) {
   const file = DriveApp.getFileById(fileId);
+  if (file.getSize() > WHOLE_LIMIT) {
+    return json({
+      success: false,
+      error: 'ফাইলটি বড় — start ও len দিয়ে টুকরো করে নিন'
+    });
+  }
   const blob = file.getBlob();
   const encoded = Utilities.base64Encode(blob.getBytes());
   return payload({
@@ -141,20 +154,28 @@ function downloadChunk(fileId, start, len) {
   if (start >= size) return json({ success: false, error: 'start ফাইলের আকারের বাইরে' });
   if (start + len > size) len = size - start;
 
-  const res = UrlFetchApp.fetch(
-    'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId)
-      + '?alt=media&supportsAllDrives=true',
-    {
-      method: 'get',
-      headers: {
-        Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
-        Range: 'bytes=' + start + '-' + (start + len - 1)
-      },
-      muteHttpExceptions: true
-    });
+  /* Drive মাঝেমধ্যে ৫xx দেয়। এখানেই একবার আবার চেষ্টা করলে ক্লায়েন্টকে
+     পুরো রাউন্ড-ট্রিপ ঘুরে আসতে হয় না — ডাউনলোড কম ব্যর্থ হয়। */
+  let res = null, code = 0;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) Utilities.sleep(600);
+    res = UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId)
+        + '?alt=media&supportsAllDrives=true',
+      {
+        method: 'get',
+        headers: {
+          Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+          Range: 'bytes=' + start + '-' + (start + len - 1)
+        },
+        muteHttpExceptions: true
+      });
+    code = res.getResponseCode();
+    // ২০৬ = আংশিক (যা চাই), ২০০ = পুরোটা পাঠিয়ে দিয়েছে
+    if (code === 206 || code === 200) break;
+    if (code < 500) break;   // ৪xx স্থায়ী ভুল — আবার চেষ্টা করে লাভ নেই
+  }
 
-  const code = res.getResponseCode();
-  // ২০৬ = আংশিক (যা চাই), ২০০ = পুরোটা পাঠিয়ে দিয়েছে
   if (code !== 206 && code !== 200) {
     return json({ success: false, error: 'Drive সাড়া দেয়নি (' + code + ')' });
   }
