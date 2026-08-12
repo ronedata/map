@@ -1,60 +1,1148 @@
 <!doctype html>
-<html lang="bn">
+<html lang="bn" data-theme="light">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Map Explorer</title>
-  <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-  <!-- Bootstrap Icons -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-  <!-- Choices.js CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
-  <link rel="stylesheet" href="styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Map Explorer — সারাদেশের মৌজা ম্যাপ</title>
+<style>
+/* ============ ফন্ট ============
+   ইনস্টল করা ফন্টের ভরসায় থাকলে বাংলা যুক্তাক্ষর ভেঙে যায় (Windows এর পুরনো
+   Vrinda, বা ফোনে বাংলা ফন্ট না থাকা)। তাই ফন্টটি সাথেই রাখা — একবার নামে,
+   পরে ব্রাউজারে ক্যাশ থাকে। ভেরিয়েবল ফন্ট, তাই এক ফাইলেই সব ওজন।
+   Noto Sans Bengali · SIL Open Font License 1.1 */
+@font-face{
+  font-family:'Noto Sans Bengali';
+  src:url('fonts/noto-bengali.woff2') format('woff2');
+  font-weight:100 900;
+  font-style:normal;
+  font-display:swap;
+  /* কেবল বাংলা লেখায় ব্যবহৃত হবে; ইংরেজি/সংখ্যা সিস্টেম ফন্টেই থাকবে */
+  unicode-range:U+0951-0952,U+0964-0965,U+0980-09FE,U+200C-200D,U+20B9,U+25CC;
+}
+/* ============ design tokens ============ */
+:root{
+  --bg:#f2f6f3; --surface:#ffffff; --surface-2:#eaf2ed; --surface-3:#f7faf8;
+  --text:#12241c; --muted:#5c7268; --line:#dce7e1; --line-strong:#c8d8d0;
+  --primary:#0a6b4f; --primary-2:#0e8a63; --primary-soft:#e1f2ea; --primary-ink:#ffffff;
+  --accent:#e63946; --accent-soft:#fdecee;
+  --gold:#d97706; --gold-soft:#fdf3e3;
+  --ok:#0a7d4f; --ok-soft:#e4f5ec;
+  --radius:14px; --radius-sm:10px;
+  --shadow:0 1px 2px rgba(15,40,31,.05), 0 10px 28px rgba(15,40,31,.08);
+  --shadow-lg:0 2px 4px rgba(15,40,31,.06), 0 18px 44px rgba(15,40,31,.13);
+  --focus:0 0 0 3px rgba(14,138,99,.35);
+  /* Nirmala UI — Windows এ বাংলার ডিফল্ট; না থাকলে পরেরগুলোয় নামবে */
+  --font:"Noto Sans Bengali","Hind Siliguri","Nirmala UI","Shonar Bangla","SolaimanLipi","Vrinda","Segoe UI",Tahoma,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+[data-theme="dark"]{
+  --bg:#0b1411; --surface:#131f1a; --surface-2:#1a2a23; --surface-3:#16241e;
+  --text:#e7f1ec; --muted:#8fa69b; --line:#24392f; --line-strong:#2f4a3d;
+  --primary:#2ec090; --primary-2:#45d8a7; --primary-soft:#0f2e23; --primary-ink:#06231a;
+  --accent:#ff6b76; --accent-soft:#341a1e;
+  --gold:#fbbf24; --gold-soft:#2e2410;
+  --ok:#34d399; --ok-soft:#0f2b1f;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+  --shadow-lg:0 2px 4px rgba(0,0,0,.5), 0 20px 50px rgba(0,0,0,.55);
+  --focus:0 0 0 3px rgba(46,192,144,.35);
+}
+/* ============ base ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font); background:var(--bg); color:var(--text);
+  min-height:100vh; line-height:1.55; -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+button{font-family:inherit;cursor:pointer;color:inherit;background:none;border:none}
+/* option আলাদা এলিমেন্ট — inherit না দিলে OS এর ফন্টে আঁকে, বাংলা ভেঙে যায় */
+input,select,option,textarea{font-family:var(--font)}
+::selection{background:var(--primary);color:var(--primary-ink)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:8px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+.hidden{display:none!important}
+mark{background:var(--gold-soft);color:var(--gold);border-radius:3px;padding:0 2px}
+/* ============ top bar ============ */
+.topbar{
+  position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--line);
+  box-shadow:0 1px 0 rgba(15,40,31,.03);
+}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{
+  width:42px;height:42px;flex:none;border-radius:12px;
+  background:linear-gradient(135deg,var(--primary) 0%,var(--primary-2) 100%);
+  display:grid;place-items:center;color:#fff;box-shadow:var(--shadow);
+}
+.logo svg{width:24px;height:24px}
+.brand h1{font-size:1.13rem;font-weight:800;letter-spacing:.2px;line-height:1.2}
+.brand p{font-size:.78rem;color:var(--muted);font-weight:500}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:700;
+  padding:5px 11px;border-radius:999px;border:1px solid var(--line);
+  color:var(--muted);background:var(--surface-3);white-space:nowrap;
+}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.chip.live{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.chip.live .dot{background:var(--ok)}
+.chip.err{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.chip.err .dot{background:var(--accent)}
+.icon-btn{
+  width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  border:1px solid var(--line);background:var(--surface-3);color:var(--muted);
+  transition:all .18s ease;position:relative;
+}
+.icon-btn:hover{color:var(--primary);border-color:var(--primary);background:var(--primary-soft)}
+.icon-btn.on{color:var(--gold);border-color:var(--gold);background:var(--gold-soft)}
+.icon-btn svg{width:19px;height:19px}
+.icon-btn .badge{
+  position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;
+  border-radius:999px;background:var(--gold);color:#fff;font-size:.68rem;font-weight:800;
+  display:grid;place-items:center;
+}
+/* ============ layout ============ */
+.wrap{max-width:1080px;margin:0 auto;padding:20px 20px 60px}
+.panel{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px;
+}
+.p-head{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  border-bottom:1px solid var(--line);background:var(--surface-3);
+}
+.p-head h2{font-size:.94rem;font-weight:800;flex:1;min-width:0}
+.p-num{
+  flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  background:var(--primary-soft);color:var(--primary);font-weight:800;font-size:.78rem;
+}
+.p-num svg{width:15px;height:15px}
+.p-body{padding:14px 16px}
+.btn-sub{
+  flex:none;display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:800;
+  padding:6px 12px;border-radius:9px;border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--muted);transition:all .16s ease;
+}
+.btn-sub:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.btn-sub svg{width:14px;height:14px}
+/* ============ search box ============ */
+.searchbox{position:relative}
+.searchbox .s-ico{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  color:var(--muted);display:grid;place-items:center;pointer-events:none;
+}
+.searchbox .s-ico svg{width:17px;height:17px}
+.searchbox input{
+  width:100%;padding:10px 38px 10px 40px;border-radius:12px;border:1px solid var(--line);
+  background:var(--surface-3);font-size:.9rem;color:var(--text);transition:border .18s, box-shadow .18s;
+}
+.searchbox input::placeholder{color:var(--muted)}
+.searchbox input:focus{border-color:var(--primary);box-shadow:var(--focus);outline:none;background:var(--surface)}
+.searchbox .s-clear{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  width:26px;height:26px;border-radius:8px;display:none;place-items:center;color:var(--muted);
+}
+.searchbox .s-clear.show{display:grid}
+.searchbox .s-clear:hover{color:var(--accent);background:var(--accent-soft)}
+.searchbox .s-clear svg{width:15px;height:15px}
+/* জায়গা খোঁজার ফলাফল */
+.hits{display:flex;flex-direction:column;gap:6px;margin-top:12px;max-height:340px;overflow:auto}
+.hit{
+  display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:10px;
+  border:1px solid var(--line);background:var(--surface-3);text-align:left;transition:all .15s ease;
+}
+.hit:hover{border-color:var(--primary);background:var(--primary-soft)}
+.hit .h-ico{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.hit .h-ico svg{width:16px;height:16px}
+.hit .h-main{flex:1;min-width:0}
+.hit .h-name{display:block;font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit .h-path{display:block;font-size:.75rem;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit .h-cnt{flex:none;font-size:.73rem;font-weight:800;color:var(--primary);white-space:nowrap}
+.note{font-size:.8rem;color:var(--muted);font-weight:600;margin-top:10px}
+/* ============ ড্রপডাউন ============ */
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
+.field label{display:block;font-size:.79rem;font-weight:800;color:var(--muted);margin-bottom:5px}
+.field label svg{width:13px;height:13px;vertical-align:-2px;margin-left:2px}
+.sel-wrap{position:relative}
+.sel-wrap .chev{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;display:grid}
+.sel-wrap .chev svg{width:15px;height:15px;transform:rotate(90deg)}
+.field select{
+  width:100%;padding:10px 34px 10px 13px;border-radius:11px;border:1px solid var(--line);
+  background:var(--surface-3);font-size:.88rem;font-weight:700;color:var(--text);
+  appearance:none;cursor:pointer;transition:border .18s, box-shadow .18s;
+}
+.field select:focus{border-color:var(--primary);box-shadow:var(--focus);outline:none;background:var(--surface)}
+.field select:disabled{opacity:.55;cursor:not-allowed;font-weight:600}
+/* ============ টেবিল ============ */
+/* table-layout:fixed — নামের কলাম বাকি জায়গা নেয়, বোতামের কলাম কখনো
+   পর্দার বাইরে যায় না (আগে মোবাইলে ডাউনলোড বোতাম দেখা যেত না) */
+.dtable{width:100%;border-collapse:collapse;table-layout:fixed}
+.dtable thead th{
+  text-align:left;font-size:.72rem;font-weight:800;letter-spacing:.4px;color:var(--muted);
+  padding:7px 10px;background:var(--surface-2);border-bottom:1px solid var(--line-strong);white-space:nowrap;
+}
+.dtable thead th:first-child{border-top-left-radius:8px}
+.dtable thead th:last-child{border-top-right-radius:8px;text-align:right}
+.dtable td{padding:4px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.dtable tbody tr:hover{background:var(--surface-3)}
+.dtable .num{width:46px;font-size:.76rem;color:var(--muted);font-family:var(--mono);text-align:right;white-space:nowrap}
+.dtable .col-size{width:82px}
+.dtable .col-type{width:64px}
+.dtable .col-star{width:40px}
+.dtable .col-dl{width:118px}
+.dtable .right{text-align:right;white-space:nowrap}
+.dtable td{overflow:hidden}
+.frow .fname{display:flex;align-items:center;gap:9px;font-size:.84rem;font-weight:700;min-width:0}
+.frow .fname>span{min-width:0}
+.frow .fname .nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .fsub{display:block;font-weight:600;font-size:.73rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* কেবল ছোট পর্দায় — যেখানে আকার/ধরনের কলাম লুকানো থাকে */
+.frow .fmobile{display:none;font-weight:600;font-size:.73rem;color:var(--muted)}
+.frow .fico{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--accent-soft);color:var(--accent)}
+.frow .fico svg{width:15px;height:15px}
+.frow .fico.img{background:var(--primary-soft);color:var(--primary)}
+.frow .fico.other{background:var(--surface-2);color:var(--muted)}
+.frow .fsize{font-size:.76rem;color:var(--muted);font-weight:700;font-family:var(--mono);white-space:nowrap;text-align:right}
+.frow .ftag{display:inline-block;font-size:.68rem;font-weight:800;letter-spacing:.5px;color:var(--accent);border:1px solid var(--accent);border-radius:5px;padding:0 6px;background:var(--accent-soft)}
+.frow .ftag.img{color:var(--primary);border-color:var(--primary);background:var(--primary-soft)}
+.frow .ftag.other{color:var(--muted);border-color:var(--line-strong);background:var(--surface-2)}
+.frow .fstar{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted);transition:all .16s ease}
+.frow .fstar:hover{background:var(--gold-soft);color:var(--gold)}
+.frow .fstar.on{color:var(--gold);background:var(--gold-soft)}
+.frow .fstar svg{width:16px;height:16px}
+.frow .fdl{
+  display:inline-flex;align-items:center;gap:5px;font-size:.78rem;font-weight:800;
+  padding:5px 11px;border-radius:8px;background:var(--primary);color:#fff;transition:all .16s ease;
+}
+.frow .fdl:hover{background:var(--primary-2);box-shadow:var(--shadow)}
+.frow .fdl:disabled{opacity:.6;cursor:wait}
+/* প্রক্সির সীমার চেয়ে বড় ফাইল — নামানো যাবে না */
+.frow .fdl.toobig{background:var(--surface-2);color:var(--muted);border:1px solid var(--line-strong);cursor:not-allowed;opacity:1}
+.frow .fdl.toobig:hover{background:var(--surface-2);box-shadow:none}
+.frow .fdl svg{width:13px;height:13px}
+.frow.flash{animation:flash 2.2s ease}
+@keyframes flash{0%,60%{background:var(--gold-soft)}100%{background:transparent}}
+.tablewrap{overflow-x:auto}
+/* ============ পাতা বদল ============ */
+.pager{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:11px}
+.pg-info{font-size:.79rem;color:var(--muted);font-weight:700;font-family:var(--mono)}
+.pg-btns{display:flex;align-items:center;gap:8px}
+.pg{
+  font-size:.8rem;font-weight:800;padding:7px 14px;border-radius:9px;
+  border:1px solid var(--line-strong);background:var(--surface);color:var(--text);transition:all .16s ease;
+}
+.pg:hover:not(:disabled){border-color:var(--primary);color:var(--primary);background:var(--primary-soft)}
+.pg:disabled{opacity:.4;cursor:not-allowed}
+.pg-now{font-size:.8rem;font-weight:800;color:var(--muted);min-width:56px;text-align:center}
+/* ============ ডাউনলোডের মডাল ============ */
+.modal-back{
+  position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:18px;
+  background:rgba(8,20,16,.55);backdrop-filter:blur(3px);animation:fade .18s ease;
+}
+.modal{
+  width:min(440px,100%);background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .2s ease;
+}
+.modal-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);background:var(--surface-3)}
+.modal-head h2{font-size:.95rem;font-weight:800;flex:1;min-width:0}
+.modal-x{width:32px;height:32px;flex:none;border-radius:9px;display:grid;place-items:center;color:var(--muted);border:1px solid var(--line);background:var(--surface)}
+.modal-x:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.modal-x svg{width:15px;height:15px}
+.modal-body{padding:16px}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+body.locked{overflow:hidden}
+/* অগ্রগতি */
+.dl-name{font-size:.88rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-sub{font-size:.76rem;color:var(--muted);font-weight:600}
+.pctrow{display:flex;align-items:baseline;gap:10px;margin-top:14px}
+.pct{font-size:1.7rem;font-weight:800;color:var(--primary);line-height:1;font-variant-numeric:tabular-nums}
+.pct.done{color:var(--ok)}
+.pct.fail{color:var(--accent)}
+.pctrow .msg{font-size:.78rem;color:var(--muted);font-weight:600;flex:1;min-width:0}
+.bar{height:10px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin:9px 0 2px;border:1px solid var(--line)}
+.bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),var(--primary-2));transition:width .25s ease}
+.bar.fail span{background:var(--accent)}
+/* ============ খালি অবস্থা ============ */
+.empty{padding:30px 20px;text-align:center;color:var(--muted)}
+.empty .e-ico{width:52px;height:52px;margin:0 auto 12px;border-radius:16px;display:grid;place-items:center;background:var(--surface-3);color:var(--muted);border:1px dashed var(--line-strong)}
+.empty .e-ico svg{width:26px;height:26px}
+.empty p{font-size:.86rem;font-weight:600}
+.empty small{font-size:.78rem}
+.alert{
+  display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:11px;
+  border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);
+  font-size:.82rem;font-weight:600;
+}
+.alert svg{width:17px;height:17px;flex:none;margin-top:2px}
+.offline{
+  display:flex;gap:10px;align-items:center;padding:11px 14px;border-radius:11px;margin-bottom:14px;
+  border:1px solid var(--gold);background:var(--gold-soft);color:var(--gold);
+  font-size:.82rem;font-weight:700;
+}
+.offline svg{width:18px;height:18px;flex:none}
+/* ============ toasts ============ */
+#toasts{position:fixed;right:16px;bottom:16px;z-index:100;display:flex;flex-direction:column;gap:9px;max-width:min(360px,calc(100vw - 32px))}
+.toast{
+  display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:13px;
+  background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-lg);
+  font-size:.83rem;font-weight:600;animation:slidein .25s ease;max-width:100%;
+}
+.toast.out{animation:slideout .25s ease forwards}
+.toast .t-ico{flex:none;width:22px;height:22px;border-radius:7px;display:grid;place-items:center;color:#fff}
+.toast.ok .t-ico{background:var(--ok)}
+.toast.err .t-ico{background:var(--accent)}
+.toast .t-ico svg{width:13px;height:13px}
+@keyframes slidein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes slideout{to{opacity:0;transform:translateY(8px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ============ responsive ============ */
+@media (max-width:720px){
+  .wrap{padding:14px 12px 50px}
+  .topbar{padding:10px 12px}
+  .brand p{display:none}
+  .p-body{padding:12px}
+  .dtable td,.dtable thead th{padding-left:5px;padding-right:5px}
+  /* ছোট পর্দায় সিরিয়াল, আকার ও ধরন লুকানো — নাম আর বোতামই মুখ্য।
+     আকার নামের নিচে ছোট করে দেখানো হয়, তাই তথ্য হারায় না। */
+  .dtable .num,.dtable .col-size,.dtable .col-type{display:none}
+  .dtable .col-star{width:42px}
+  .dtable .col-dl{width:50px}
+  /* আঙুলে চাপার মতো বড় লক্ষ্য */
+  .frow .fdl{padding:0;justify-content:center;width:40px;height:38px}
+  .frow .fdl .lbl{display:none}
+  .frow .fmobile{display:block}
+  .frow .fstar{width:38px;height:38px}
+  .dtable td{padding-top:6px;padding-bottom:6px}
+  .fields{grid-template-columns:1fr}
+  .p-head{padding:11px 12px}
+  .hit{padding:10px}
+  .hit .h-cnt{display:none}
+}
+</style>
 </head>
-<body class="app-shell">
-  <div class="container my-4">
-    <header class="app-header pb-3 mb-4 border-bottom border-opacity-25">
-      <div class="d-flex justify-content-between align-items-center">
-        <div>
-          <h1 class="h3 mb-1">
-            <i class="bi bi-geo-alt-fill text-primary me-2"></i>
-            Map Explorer
-          </h1>
-          <p class="text-body-secondary mb-0 small">বাংলাদেশ ম্যাপ ডেটা ব্রাউজার</p>
-        </div>
-      </div>
-    </header>
+<body>
 
-    <main>
-      <div class="card shadow-sm mb-4">
-        <div class="card-body">
-          <div class="toolbar d-flex justify-content-between align-items-center mb-3 gap-2">
-            <div id="status" class="status text-body-secondary">লোড হচ্ছে...</div>
-            <div class="toolbar-actions d-flex gap-2">
-              <div id="downloadContainer" class="btn-group">
-                <!-- Download button will be inserted here by app.js -->
-              </div>
-              <button id="resetBtn" class="btn btn-sm btn-outline-danger">
-                <i class="bi bi-arrow-clockwise"></i> রিসেট
-              </button>
-            </div>
-          </div>
-          <div id="dropdownContainer" class="dropdown-container d-flex flex-column gap-2 mb-3"></div>
-          <div id="progressContainer" class="progress-container" style="display: none;"></div>
-          <ul id="fileContainer" class="list-group"></ul>
-        </div>
-      </div>
-    </main>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+    </div>
+    <div>
+      <h1>Map Explorer</h1>
+      <p>সারাদেশের মৌজা ম্যাপ</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="statusChip" class="chip"><span class="dot"></span><span id="statusText">লোড হচ্ছে…</span></span>
+    <button id="recentBtn" class="icon-btn hidden" aria-label="সাম্প্রতিক" title="সাম্প্রতিক"></button>
+    <button id="favBtn" class="icon-btn hidden" aria-label="প্রিয় তালিকা" title="প্রিয় তালিকা"></button>
+    <button id="themeBtn" class="icon-btn" aria-label="থিম পরিবর্তন" title="থিম পরিবর্তন"></button>
+  </div>
+</header>
 
-    <footer class="mt-4 text-center text-body-secondary">
-      <small>Powered by Edge</small>
-    </footer>
+<main class="wrap">
+
+  <!-- নেট চলে গেলে দেখা যায় -->
+  <div class="offline hidden" id="offline">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22"/><path d="M16.7 12.7A5 5 0 0 0 12 11"/><path d="M5 12.6a10 10 0 0 1 4-2.4"/><path d="M2 8.8A15 15 0 0 1 7.7 6"/><path d="M22 8.8a15 15 0 0 0-6-3.3"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M12 20h.01"/></svg>
+    <span>ইন্টারনেট সংযোগ নেই — সংযোগ ফিরলে আবার চেষ্টা করুন</span>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-  <!-- Choices.js -->
-  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-  <script src="app.js"></script>
+  <!-- ================= জায়গা খোঁজা ================= -->
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-num" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+      <h2>জায়গা খুঁজুন</h2>
+    </div>
+    <div class="p-body">
+      <div class="searchbox">
+        <span class="s-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+        <input id="q" type="text" autocomplete="off" aria-label="জায়গা খুঁজুন"
+               placeholder="উপজেলা, জেলা বা বিভাগের নাম লিখুন (যেমন কুমারখালী)">
+        <button class="s-clear" id="qClear" aria-label="মুছুন"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      </div>
+      <div id="hits"></div>
+    </div>
+  </section>
+
+  <!-- ================= এলাকা বাছাই ================= -->
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-num">১</span>
+      <h2>এলাকা বাছুন</h2>
+      <button class="btn-sub" id="resetBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        রিসেট
+      </button>
+    </div>
+    <div class="p-body">
+      <div class="fields">
+        <div class="field">
+          <label for="selDiv">বিভাগ</label>
+          <div class="sel-wrap">
+            <select id="selDiv"><option value="">লোড হচ্ছে…</option></select>
+            <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="selDist">জেলা</label>
+          <div class="sel-wrap">
+            <select id="selDist" disabled><option value="">আগে বিভাগ বাছুন</option></select>
+            <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="selUp">উপজেলা / থানা</label>
+          <div class="sel-wrap">
+            <select id="selUp" disabled><option value="">আগে জেলা বাছুন</option></select>
+            <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="selSv">জরিপের ধরন</label>
+          <div class="sel-wrap">
+            <select id="selSv" disabled><option value="">আগে উপজেলা বাছুন</option></select>
+            <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+          </div>
+        </div>
+      </div>
+      <p class="note" id="svNote"></p>
+    </div>
+  </section>
+
+  <!-- ================= ম্যাপের তালিকা ================= -->
+  <section class="panel hidden" id="filesPanel">
+    <div class="p-head">
+      <span class="p-num">২</span>
+      <h2>ম্যাপের তালিকা</h2>
+      <span class="chip" id="fileCount"></span>
+    </div>
+    <div class="p-body">
+      <div class="searchbox" style="margin-bottom:12px">
+        <span class="s-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v7l-4 2v-9Z"/></svg></span>
+        <input id="ff" type="text" autocomplete="off" aria-label="তালিকা ছাঁকুন"
+               placeholder="মৌজার নাম বা শিট নম্বর দিয়ে ছাঁকুন">
+        <button class="s-clear" id="ffClear" aria-label="মুছুন"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      </div>
+      <div id="files"></div>
+    </div>
+  </section>
+
+  <!-- ================= সাম্প্রতিক ================= -->
+  <section class="panel hidden" id="recentPanel">
+    <div class="p-head">
+      <span class="p-num" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+      <h2>সাম্প্রতিক নামানো</h2>
+      <span class="chip" id="recentCount"></span>
+      <button class="btn-sub" id="recentClear">মুছুন</button>
+      <button class="modal-x" data-close="#recentPanel" aria-label="বন্ধ করুন" title="বন্ধ করুন">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-body" id="recent"></div>
+  </section>
+
+  <!-- ================= প্রিয় ================= -->
+  <section class="panel hidden" id="favPanel">
+    <div class="p-head">
+      <span class="p-num" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 15 9l7 .8-5.3 4.8 1.6 6.9L12 17.7 5.7 21.5l1.6-6.9L2 9.8 9 9Z"/></svg></span>
+      <h2>প্রিয় ম্যাপ</h2>
+      <span class="chip" id="favCount"></span>
+      <button class="modal-x" data-close="#favPanel" aria-label="বন্ধ করুন" title="বন্ধ করুন">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-body" id="favs"></div>
+  </section>
+
+</main>
+
+<!-- ================= ডাউনলোডের মডাল =================
+     বাইরে ক্লিক করলে বন্ধ হয় না — কেবল ক্রস বোতামে -->
+<div class="modal-back hidden" id="dlModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dlTitle">
+    <div class="modal-head">
+      <span class="p-num" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></span>
+      <h2 id="dlTitle">নামানো হচ্ছে</h2>
+      <button class="modal-x" id="dlClose" aria-label="বন্ধ করুন" title="বন্ধ করুন">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="dl"></div>
+  </div>
+</div>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* =========================================================================
+   সারাদেশের মৌজা ম্যাপ — ১,৯৪,৩১৭টি ফাইল
+
+   ★ দুই স্তরের ইনডেক্স (কেন এভাবে)
+     tree.json        ১৪৫ KB — বিভাগ/জেলা/উপজেলা/জরিপ, ফাইলের নাম ছাড়া
+     files/<id>.json  ১,০১২টি — যে জরিপ-ফোল্ডার খোলা হবে কেবল তারটাই আসে
+     পুরো ইনডেক্স ৪৪ MB; একসাথে টানলে মোবাইলে অচল হতো।
+
+   ★ ফাইল আনার একমাত্র পথ প্রক্সি — সরাসরি লিংক কোথাও বানানো বা দেখানো হয় না।
+   ========================================================================= */
+
+const CONFIG = {
+  base: 'data/mouza-map/',
+  proxy: 'https://script.google.com/macros/s/AKfycbzlLhCx-_sL_TnV_wBOPicAYcwc'
+       + 'qg3jTgawC_eysmTzVkvKZ6jl69h5I0JK3csRaL0j/exec',
+  /* Apps Script এর রেসপন্স সীমা — base64 আকার ১.৩৩× বাড়ায়, তাই এর বেশি চলে না */
+  proxyLimit: 35 * 1024 * 1024,
+  /* এক ফোল্ডারে ২,০১০টি পর্যন্ত ফাইল আছে — পাতা ভাগ করে দেখানো হয় */
+  perPage: 50,
+  /* নেট গেলে বা সার্ভার ধীর হলে কতবার আবার চেষ্টা করবে */
+  retries: 3
+};
+
+/* ================= state ================= */
+const S = {
+  tree: null,
+  files: [],        // বর্তমান ফোল্ডারের সব ফাইল
+  filtered: [],     // ছাঁকার পর যা থাকে
+  shown: [],        // এই পাতায় যেগুলো আঁকা আছে
+  page: 1,
+  cache: {},        // surveyId -> ফাইল তালিকা
+  favs: JSON.parse(localStorage.getItem('mapx-favs') || '[]'),
+  recent: JSON.parse(localStorage.getItem('mapx-recent') || '[]')
+};
+
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const BN = '০১২৩৪৫৬৭৮৯';
+const toBn = v => String(v).replace(/\d/g, d => BN[+d]);
+/* bn-BD লাখ-কোটির ধাঁচে কমা বসায় — ১,৯৪,৩১৭ (১৯৪,৩১৭ নয়) */
+const bnNum = n => Number(n).toLocaleString('bn-BD');
+
+function fmtBytes(b) {
+  const n = Number(b) || 0;
+  if (n >= 1073741824) return toBn((n / 1073741824).toFixed(2)) + ' GB';
+  if (n >= 1048576) return toBn((n / 1048576).toFixed(1)) + ' MB';
+  if (n >= 1024) return toBn(Math.round(n / 1024)) + ' KB';
+  return toBn(n) + ' বাইট';
+}
+const canProxy = f => !!f && !f.tooBig && (Number(f.size) || 0) <= CONFIG.proxyLimit;
+
+/* আর্কাইভে PDF ও স্ক্যান করা ছবি দুটোই আছে — আইকন ও ব্যাজ mimeType দেখে ঠিক হয় */
+function fileKind(mime, name) {
+  let t = String(mime || '');
+  if (!t && name) {
+    const ext = String(name).toLowerCase().split('.').pop();
+    if (ext === 'pdf') t = 'application/pdf';
+    else if (['jpg', 'jpeg'].includes(ext)) t = 'image/jpeg';
+    else if (['tif', 'tiff'].includes(ext)) t = 'image/tiff';
+    else if (['png', 'gif', 'webp'].includes(ext)) t = 'image/' + ext;
+  }
+  if (t === 'application/pdf') return { cls: '', icon: 'pdf', label: 'PDF' };
+  if (t === 'image/tiff') return { cls: 'img', icon: 'img', label: 'TIFF' };
+  if (t === 'image/jpeg') return { cls: 'img', icon: 'img', label: 'JPG' };
+  if (t.startsWith('image/')) return { cls: 'img', icon: 'img', label: 'ছবি' };
+  return { cls: 'other', icon: 'file', label: 'ফাইল' };
+}
+
+const ICO = {
+  chev:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  pdf:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>',
+  img:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>',
+  file:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+  dl:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>',
+  star:  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 15 9l7 .8-5.3 4.8 1.6 6.9L12 17.7 5.7 21.5l1.6-6.9L2 9.8 9 9Z"/></svg>',
+  pin:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  sun:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  x:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+  info:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 12v4"/></svg>',
+  warn:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>'
+};
+
+function toast(msg, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = '<span class="t-ico">' + (type === 'ok' ? ICO.check : ICO.x) + '</span><span>' + esc(msg) + '</span>';
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 260); }, 3800);
+}
+function emptyHtml(title, sub) {
+  return '<div class="empty"><div class="e-ico">' + ICO.info + '</div><p>' + esc(title) + '</p><small>' + esc(sub) + '</small></div>';
+}
+function setStatus(text, cls) {
+  $('#statusText').textContent = text;
+  $('#statusChip').className = 'chip' + (cls ? ' ' + cls : '');
+}
+
+/* ================= নেটওয়ার্ক ================= */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* অপেক্ষা দ্বিগুণ করে কয়েকবার চেষ্টা।
+
+   opts.softClientError — ৪xx কেও সাময়িক ধরে আবার চেষ্টা করবে।
+     প্রক্সির জন্য এটি দরকার: Apps Script এর /exec থেকে googleusercontent এ
+     রিডাইরেক্ট হয়, আর ওই লিংক মাঝেমধ্যে প্রথমবার ৪০৪ দেয় (বড় ফাইলে বেশি) —
+     পরের বারেই কাজ করে। ফাইল সত্যিই না থাকলে প্রক্সি ২০০ সহ
+     {success:false} পাঠায়, ৪০৪ নয়। স্থানীয় ইনডেক্সে ৪০৪ মানে সত্যিই নেই,
+     তাই সেখানে এটি বন্ধ।
+
+   opts.expectJson — উত্তর JSON না হলে (Google এর HTML এরর পাতা) আবার চেষ্টা। */
+async function fetchRetry(url, opts = {}) {
+  const { onRetry, signal, softClientError, expectJson, tries = CONFIG.retries } = opts;
+  let last;
+  for (let i = 0; i < tries; i++) {
+    if (signal && signal.aborted) throw new DOMException('বাতিল', 'AbortError');
+    if (!navigator.onLine) throw new Error('ইন্টারনেট সংযোগ নেই');
+    try {
+      const res = await fetch(url, signal ? { signal } : undefined);
+      if (res.ok) {
+        if (expectJson && !String(res.headers.get('content-type') || '').includes('json')) {
+          last = new Error('সার্ভার ভুল উত্তর দিয়েছে');
+        } else {
+          return res;
+        }
+      } else if (res.status >= 400 && res.status < 500 && !softClientError) {
+        throw new Error('পাওয়া যায়নি (' + res.status + ')');
+      } else {
+        last = new Error('সার্ভার সাড়া দিচ্ছে না (' + res.status + ')');
+      }
+    } catch (e) {
+      last = e;
+      if (e.name === 'AbortError') throw e;          // ব্যবহারকারী বাতিল করেছেন
+      if (/পাওয়া যায়নি/.test(e.message)) throw e;
+    }
+    if (i < tries - 1) {
+      const wait = 700 * Math.pow(2, i);
+      if (onRetry) onRetry(i + 2, wait);
+      await sleep(wait);
+    }
+  }
+  throw last || new Error('আনা যায়নি');
+}
+
+/* ================= ইনডেক্স আনা ================= */
+async function loadTree() {
+  const res = await fetchRetry(CONFIG.base + 'tree.json');
+  return res.json();
+}
+async function loadFiles(surveyId) {
+  if (S.cache[surveyId]) return S.cache[surveyId];
+  const res = await fetchRetry(CONFIG.base + 'files/' + encodeURIComponent(surveyId) + '.json');
+  const list = await res.json();
+  S.cache[surveyId] = list;
+  return list;
+}
+
+/* ================= ড্রপডাউন ================= */
+function fillSelect(id, items, placeholder) {
+  const sel = $(id);
+  sel.innerHTML = '<option value="">' + esc(placeholder) + '</option>'
+    + items.map(x => '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>').join('');
+  sel.disabled = !items.length;
+  sel.value = '';
+}
+/* ট্রি থেকে বর্তমানে যা বাছা আছে */
+function picked() {
+  const v = id => $(id).value;
+  const dv = (S.tree?.divisions || []).find(x => x.id === v('#selDiv'));
+  const dt = (dv?.districts || []).find(x => x.id === v('#selDist'));
+  const up = (dt?.upazilas || []).find(x => x.id === v('#selUp'));
+  const sv = (up?.surveys || []).find(x => x.id === v('#selSv'));
+  return { dv, dt, up, sv };
+}
+function onDivision() {
+  const { dv } = picked();
+  fillSelect('#selDist', (dv?.districts || []).map(d => ({ id: d.id, name: d.name })),
+    dv ? 'জেলা বাছুন' : 'আগে বিভাগ বাছুন');
+  fillSelect('#selUp', [], 'আগে জেলা বাছুন');
+  fillSelect('#selSv', [], 'আগে উপজেলা বাছুন');
+  hideFiles();
+}
+function onDistrict() {
+  const { dt } = picked();
+  fillSelect('#selUp', (dt?.upazilas || []).map(u => ({ id: u.id, name: u.name })),
+    dt ? 'উপজেলা বাছুন' : 'আগে জেলা বাছুন');
+  fillSelect('#selSv', [], 'আগে উপজেলা বাছুন');
+  hideFiles();
+}
+function onUpazila() {
+  const { up } = picked();
+  /* জরিপের নামের সাথে ফাইলসংখ্যা — কোনটায় কত আছে আগেই বোঝা যায় */
+  fillSelect('#selSv', (up?.surveys || []).map(s => ({ id: s.id, name: s.name + ' — ' + bnNum(s.count) + ' ফাইল' })),
+    up ? 'জরিপ বাছুন' : 'আগে উপজেলা বাছুন');
+  hideFiles();
+  if (up && up.surveys.length === 1) {          // একটাই জরিপ থাকলে নিজেই বেছে নিই
+    $('#selSv').value = up.surveys[0].id;
+    onSurvey();
+  }
+}
+async function onSurvey() {
+  const { sv } = picked();
+  if (!sv) { hideFiles(); return; }
+  $('#filesPanel').classList.remove('hidden');
+  $('#files').innerHTML = '<p class="note">তালিকা আসছে…</p>';
+  $('#ff').value = '';
+  $('#ffClear').classList.remove('show');
+  try {
+    S.files = await loadFiles(sv.id);
+    renderFiles(S.files, 1);
+    $('#filesPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    $('#files').innerHTML = '<div class="alert">' + ICO.warn + '<span>' + esc(e.message) + '</span></div>';
+  }
+}
+function hideFiles() {
+  $('#filesPanel').classList.add('hidden');
+  S.files = []; S.shown = [];
+  updateNote();
+}
+function updateNote() {
+  const { up, sv } = picked();
+  const n = $('#svNote');
+  if (sv) n.textContent = '';
+  else if (up) n.textContent = 'এই উপজেলায় ' + bnNum((up.surveys || []).length) + ' ধরনের জরিপ আছে — একটি বাছুন।';
+  else n.textContent = '';
+}
+
+/* ================= ফাইলের তালিকা ================= */
+function filterFiles(list, q) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return list;
+  return list.filter(f =>
+    String(f.name || '').toLowerCase().includes(s) ||
+    String(f.subPath || '').toLowerCase().includes(s));
+}
+const TABLE_HEAD = '<thead><tr><th class="num">#</th><th>ম্যাপ ফাইল</th>'
+  + '<th class="col-size">আকার</th><th class="col-type">ধরন</th>'
+  + '<th class="col-star"></th><th class="col-dl"></th></tr></thead>';
+
+function renderFiles(list, page) {
+  const box = $('#files');
+  S.filtered = list;
+  if (page !== undefined) S.page = page;
+
+  $('#fileCount').textContent = list.length === S.files.length
+    ? bnNum(list.length) + ' ফাইল'
+    : bnNum(list.length) + ' / ' + bnNum(S.files.length);
+
+  if (!list.length) {
+    S.shown = [];
+    box.innerHTML = emptyHtml('কিছু পাওয়া যায়নি', 'অন্য নাম বা শিট নম্বর দিয়ে চেষ্টা করুন');
+    return;
+  }
+  /* এক ফোল্ডারে ২,০১০টি পর্যন্ত ফাইল — সব একসাথে আঁকলে পেজ বিশাল হয়ে যায় */
+  const pages = Math.ceil(list.length / CONFIG.perPage);
+  S.page = Math.min(Math.max(S.page || 1, 1), pages);
+  const start = (S.page - 1) * CONFIG.perPage;
+  const show = list.slice(start, start + CONFIG.perPage);
+  S.shown = show;
+
+  box.innerHTML = '<div class="tablewrap"><table class="dtable">' + TABLE_HEAD + '<tbody>'
+    + show.map((f, i) => fileRow(f, start + i + 1)).join('')
+    + '</tbody></table></div>'
+    + pagerHtml(S.page, pages, list.length, start, show.length);
+}
+function pagerHtml(page, pages, total, start, count) {
+  const info = '<span class="pg-info">' + bnNum(start + 1) + '–' + bnNum(start + count)
+    + ' / ' + bnNum(total) + '</span>';
+  if (pages <= 1) return '<div class="pager">' + info + '</div>';
+  return '<div class="pager">' + info
+    + '<div class="pg-btns">'
+    + '<button class="pg" data-pg="' + (page - 1) + '"' + (page === 1 ? ' disabled' : '') + '>আগের</button>'
+    + '<span class="pg-now">' + bnNum(page) + ' / ' + bnNum(pages) + '</span>'
+    + '<button class="pg" data-pg="' + (page + 1) + '"' + (page === pages ? ' disabled' : '') + '>পরের</button>'
+    + '</div></div>';
+}
+/* তিন তালিকাতেই (ফোল্ডার / প্রিয় / সাম্প্রতিক) একই সারি */
+function listRow(f, idx, sub) {
+  const k = fileKind(f.mimeType, f.name);
+  const big = !canProxy(f);
+  const fav = S.favs.some(x => x.id === f.id);
+  return '<tr class="frow" data-fid="' + esc(f.id) + '">'
+    + '<td class="num">' + toBn(idx) + '</td>'
+    + '<td><span class="fname"><span class="fico ' + k.cls + '">' + ICO[k.icon] + '</span>'
+      + '<span><span class="nm" title="' + esc(f.name) + '">' + esc(f.name) + '</span>'
+      + (sub ? '<small class="fsub">' + esc(sub) + '</small>' : '')
+      + '<small class="fmobile">' + k.label + ' · ' + fmtBytes(f.size) + '</small>'
+      + '</span></span></td>'
+    + '<td class="col-size fsize">' + fmtBytes(f.size) + '</td>'
+    + '<td class="col-type"><span class="ftag ' + k.cls + '">' + k.label + '</span></td>'
+    + '<td class="col-star right"><button class="fstar' + (fav ? ' on' : '') + '" data-act="fav" data-id="' + esc(f.id) + '" aria-label="প্রিয়" title="প্রিয়">' + ICO.star + '</button></td>'
+    + '<td class="col-dl right">' + (big
+        ? '<button class="fdl toobig" disabled title="ফাইলটি ' + fmtBytes(CONFIG.proxyLimit) + ' এর চেয়ে বড়, তাই এখান থেকে নামানো যাচ্ছে না"><span>' + ICO.warn + '</span><span class="lbl">অতি বড়</span></button>'
+        : '<button class="fdl" data-act="dl" data-id="' + esc(f.id) + '" aria-label="ডাউনলোড" title="ডাউনলোড">'
+          + '<span>' + ICO.dl + '</span><span class="lbl">ডাউনলোড</span></button>')
+    + '</td></tr>';
+}
+const fileRow = (f, idx) => listRow(f, idx, f.subPath || '');
+const tableOf = (title, rows) => '<div class="tablewrap"><table class="dtable">'
+  + TABLE_HEAD.replace('ম্যাপ ফাইল', title) + '<tbody>' + rows + '</tbody></table></div>';
+
+/* ================= প্রিয় ================= */
+function saveFavs() { localStorage.setItem('mapx-favs', JSON.stringify(S.favs)); }
+function toggleFav(rec) {
+  const i = S.favs.findIndex(f => f.id === rec.id);
+  if (i >= 0) { S.favs.splice(i, 1); toast('প্রিয় তালিকা থেকে সরানো হয়েছে'); }
+  else { S.favs.push(rec); toast('প্রিয় তালিকায় যোগ হয়েছে ⭐'); }
+  saveFavs();
+  renderFavs();
+  if (S.shown.length) renderFiles(S.filtered, S.page);   // যে পাতায় আছি সেখানেই থাকি
+}
+function renderFavs() {
+  const btn = $('#favBtn');
+  btn.classList.toggle('hidden', !S.favs.length);
+  btn.innerHTML = ICO.star + (S.favs.length ? '<span class="badge">' + toBn(S.favs.length) + '</span>' : '');
+  $('#favCount').textContent = bnNum(S.favs.length) + ' ম্যাপ';
+
+  if (!S.favs.length) { $('#favPanel').classList.add('hidden'); return; }
+  $('#favs').innerHTML = tableOf('প্রিয় ম্যাপ',
+    S.favs.map((f, i) => listRow(f, i + 1, (f.path || []).join(' · '))).join(''));
+}
+
+/* ================= সাম্প্রতিক ================= */
+/* যেগুলো নামানো হয়েছে — শেষ ২০টি, localStorage এ */
+function pushRecent(f, path) {
+  S.recent = S.recent.filter(x => x.id !== f.id);
+  S.recent.unshift({
+    id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, tooBig: f.tooBig,
+    path: f.path || path, at: Date.now()
+  });
+  S.recent = S.recent.slice(0, 20);
+  localStorage.setItem('mapx-recent', JSON.stringify(S.recent));
+  renderRecent();
+}
+function renderRecent() {
+  const btn = $('#recentBtn');
+  btn.classList.toggle('hidden', !S.recent.length);
+  btn.innerHTML = ICO.clock + (S.recent.length ? '<span class="badge">' + toBn(S.recent.length) + '</span>' : '');
+  $('#recentCount').textContent = bnNum(S.recent.length) + 'টি';
+  /* প্যানেলটি নিজে থেকে খোলে না — উপরের ঘড়ি বোতামে চাপলে দেখা যায় */
+  if (!S.recent.length) { $('#recentPanel').classList.add('hidden'); return; }
+  $('#recent').innerHTML = tableOf('সাম্প্রতিক ম্যাপ',
+    S.recent.map((f, i) => listRow(f, i + 1, (f.path || []).join(' · '))).join(''));
+}
+/* যে ফাইলটির উপর কাজ হচ্ছে — চলতি ফোল্ডারে না পেলে প্রিয় তালিকায় খুঁজি */
+function findFile(id) {
+  return S.files.find(f => f.id === id) || S.favs.find(f => f.id === id) || null;
+}
+
+/* ================= ডাউনলোড ================= */
+async function download(f, btn) {
+  if (!canProxy(f)) {
+    toast('ফাইলটি ' + fmtBytes(CONFIG.proxyLimit) + ' এর চেয়ে বড় — এখান থেকে নামানো যাচ্ছে না', 'err');
+    return;
+  }
+  /* মডাল বন্ধ করলেই এটি দিয়ে চলতি অনুরোধ থামিয়ে দেওয়া হয় */
+  const ac = new AbortController();
+  S.abort = ac;
+  openModal(f);
+
+  /* প্রক্সি একবারেই পুরো JSON পাঠায় — সত্যিকারের বাইট-প্রগ্রেস পাওয়া যায় না।
+     তাই ধাপ অনুযায়ী লক্ষ্য ঠিক করে সংখ্যাটা ধীরে ধীরে সেদিকে এগোয়, যাতে
+     অপেক্ষার সময়ও থেমে না থাকে। */
+  let cur = 0, target = 0, ceil = 0, msg = 'শুরু হচ্ছে…';
+  const paint = () => {
+    const bar = $('#dlBar'), p = $('#dlPct'), m = $('#dlMsg');
+    if (bar) bar.style.width = Math.max(2, cur) + '%';
+    if (p) p.textContent = toBn(Math.round(cur)) + '%';
+    if (m) m.textContent = msg;
+  };
+  const timer = setInterval(() => {
+    /* ধাপে পৌঁছাতে দ্রুত, তারপর পরের ধাপের আগ পর্যন্ত ধীরে হামাগুড়ি —
+       নইলে সার্ভারের অপেক্ষার পুরো সময়টা সংখ্যাটা জমে থাকে */
+    if (cur < target) cur = Math.min(target, cur + Math.max(0.6, (target - cur) * 0.14));
+    else if (cur < ceil) cur = Math.min(ceil, cur + 0.07);
+    else return;
+    paint();
+  }, 60);
+  const stage = (pct, top, text) => {
+    target = pct; ceil = top; if (text) msg = text;
+    if (pct < cur) cur = pct;
+    paint();
+  };
+  const finish = (pct, text, cls) => {
+    clearInterval(timer);
+    cur = target = ceil = pct; msg = text; paint();
+    if (cls) { $('#dlPct').classList.add(cls); if (cls === 'fail') $('#dlBar').parentElement.classList.add('fail'); }
+    /* আর বাতিল করার কিছু নেই — বোতামটি এখন শুধু বন্ধের */
+    const x = $('#dlClose');
+    x.title = 'বন্ধ করুন';
+    x.setAttribute('aria-label', 'বন্ধ করুন');
+  };
+  const prev = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span style="width:13px;height:13px;border:2px solid rgba(255,255,255,.4);'
+      + 'border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .8s linear infinite"></span>';
+  }
+
+  try {
+    /* stage(লক্ষ্য, যতদূর হামাগুড়ি, বার্তা) — প্রক্সি একবারেই পুরো JSON পাঠায়,
+       তাই সত্যিকারের বাইট-প্রগ্রেস নেই; ধাপ ও আনুমানিক গতি দেখানো হয় */
+    stage(5, 30, 'সার্ভারে অনুরোধ পাঠানো হচ্ছে…');
+    const res = await fetchRetry(CONFIG.proxy + '?action=download&fileId=' + encodeURIComponent(f.id), {
+      signal: ac.signal,
+      softClientError: true,   // রিডাইরেক্টের সাময়িক ৪০৪ — আবার চেষ্টা করলেই আসে
+      expectJson: true,
+      tries: 4,
+      onRetry: (n, wait) => stage(8, 30,
+        'সার্ভার সাড়া দেয়নি — ' + toBn(Math.round(wait / 1000)) + ' সেকেন্ড পর ' + toBn(n) + 'বার চেষ্টা…')
+    });
+
+    stage(35, 58, 'সার্ভার থেকে ফাইল আসছে…');
+    const j = await res.json();
+    if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
+    if (!j.success || !j.data || !j.data.base64) throw new Error(j.error || 'ফাইলটি আনা যায়নি');
+
+    stage(62, 86, 'ফাইল ডিকোড হচ্ছে…');
+    const bin = atob(j.data.base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    /* ডিকোড শেষে আরেকবার দেখি — এর মধ্যে বন্ধ করা হলে ফাইল সেভ করব না */
+    if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
+    stage(92, 97, 'প্রস্তুত হচ্ছে…');
+    const blob = new Blob([bytes], { type: j.data.mimeType || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = j.data.fileName || f.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    finish(100, 'সম্পন্ন — ফাইল সংরক্ষণ হয়েছে', 'done');
+    const p = picked();
+    pushRecent(f, [p.dv?.name, p.dt?.name, p.up?.name, p.sv?.name].filter(Boolean));
+    toast('ম্যাপ নামানো হয়েছে');
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      clearInterval(timer);
+      toast('ডাউনলোড বাতিল করা হয়েছে');
+    } else {
+      finish(cur, 'নামানো যায়নি', 'fail');
+      $('#dl').insertAdjacentHTML('beforeend', '<div class="alert" style="margin-top:12px">' + ICO.warn
+        + '<span>' + esc(e.message) + ' — কিছুক্ষণ পর আবার চেষ্টা করুন।</span></div>');
+      toast('ডাউনলোড ব্যর্থ হয়েছে', 'err');
+    }
+  } finally {
+    S.busy = false;
+    S.abort = null;
+    clearInterval(timer);
+    if (btn) { btn.disabled = false; btn.innerHTML = prev; }
+  }
+}
+
+/* ================= মডাল ================= */
+function openModal(f) {
+  S.busy = true;
+  const x = $('#dlClose');
+  x.title = 'বাতিল করে বন্ধ করুন';
+  x.setAttribute('aria-label', 'বাতিল করে বন্ধ করুন');
+  $('#dl').innerHTML =
+    '<div class="dl-name" title="' + esc(f.name) + '">' + esc(f.name) + '</div>'
+    + '<div class="dl-sub">' + fmtBytes(f.size) + '</div>'
+    + '<div class="pctrow"><span class="pct" id="dlPct">০%</span><span class="msg" id="dlMsg">শুরু হচ্ছে…</span></div>'
+    + '<div class="bar"><span id="dlBar" style="width:2%"></span></div>';
+  $('#dlModal').classList.remove('hidden');
+  document.body.classList.add('locked');
+  $('#dlClose').focus();
+}
+function closeModal() {
+  /* চলতি ডাউনলোড থাকলে বন্ধ করা মানেই বাতিল করা */
+  if (S.busy && S.abort) S.abort.abort();
+  $('#dlModal').classList.add('hidden');
+  document.body.classList.remove('locked');
+}
+/* ক্রস বোতামেই কেবল বন্ধ — বাইরে ক্লিক করলে বন্ধ হয় না */
+$('#dlClose').addEventListener('click', closeModal);
+$('#dlModal').addEventListener('click', e => e.stopPropagation());
+/* নামানো শেষ হলে Esc ও চলে; চলাকালে নয়, যাতে ভুলে বন্ধ না হয় */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('#dlModal').classList.contains('hidden') && !S.busy) closeModal();
+});
+
+/* ================= জায়গা খোঁজা ================= */
+/* ১,৯৪,৩১৭টি ফাইলের নাম একসাথে খোঁজা সম্ভব নয় (৪৪ MB লাগত), তাই জায়গা ধরে
+   খোঁজা হয়; ফোল্ডার খোলার পর ফাইলের নাম ছেঁকে দেখা যায়। */
+function searchPlaces(q, limit = 25) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!S.tree || s.length < 2) return [];
+  const out = [];
+  for (const dv of S.tree.divisions || []) {
+    for (const dt of dv.districts || []) {
+      for (const up of dt.upazilas || []) {
+        if (!(dv.name + ' ' + dt.name + ' ' + up.name).toLowerCase().includes(s)) continue;
+        out.push({ dv, dt, up, total: (up.surveys || []).reduce((a, x) => a + (x.count || 0), 0) });
+        if (out.length >= limit) return out;
+      }
+    }
+  }
+  return out;
+}
+function renderHits(q) {
+  const box = $('#hits');
+  const s = String(q || '').trim();
+  if (s.length < 2) { box.innerHTML = ''; return; }
+  const res = searchPlaces(s);
+  if (!res.length) { box.innerHTML = '<p class="note">কিছু পাওয়া যায়নি — অন্য নাম চেষ্টা করুন।</p>'; return; }
+  box.innerHTML = '<div class="hits">' + res.map((r, i) =>
+    '<button class="hit" data-hit="' + i + '">'
+    + '<span class="h-ico">' + ICO.pin + '</span>'
+    + '<span class="h-main"><span class="h-name">' + esc(r.up.name) + '</span>'
+    + '<span class="h-path">' + esc(r.dt.name) + ' · ' + esc(r.dv.name) + '</span></span>'
+    + '<span class="h-cnt">' + bnNum(r.total) + ' ফাইল · ' + toBn((r.up.surveys || []).length) + ' জরিপ</span>'
+    + '</button>').join('') + '</div>';
+  box.querySelectorAll('[data-hit]').forEach(b => b.addEventListener('click', () => {
+    const r = res[+b.dataset.hit];
+    $('#selDiv').value = r.dv.id; onDivision();
+    $('#selDist').value = r.dt.id; onDistrict();
+    $('#selUp').value = r.up.id; onUpazila();
+    updateNote();
+    $('#selSv').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+}
+
+/* ================= events ================= */
+$('#selDiv').addEventListener('change', () => { onDivision(); updateNote(); });
+$('#selDist').addEventListener('change', () => { onDistrict(); updateNote(); });
+$('#selUp').addEventListener('change', () => { onUpazila(); updateNote(); });
+$('#selSv').addEventListener('change', () => { onSurvey(); updateNote(); });
+
+let deb = null;
+$('#q').addEventListener('input', e => {
+  $('#qClear').classList.toggle('show', !!e.target.value);
+  clearTimeout(deb);
+  deb = setTimeout(() => renderHits(e.target.value), 220);
+});
+$('#qClear').addEventListener('click', () => {
+  $('#q').value = ''; $('#qClear').classList.remove('show'); $('#hits').innerHTML = ''; $('#q').focus();
+});
+let deb2 = null;
+$('#ff').addEventListener('input', e => {
+  $('#ffClear').classList.toggle('show', !!e.target.value);
+  clearTimeout(deb2);
+  /* ছাঁকার পর সবসময় প্রথম পাতায় ফিরি */
+  deb2 = setTimeout(() => renderFiles(filterFiles(S.files, e.target.value), 1), 180);
+});
+$('#ffClear').addEventListener('click', () => {
+  $('#ff').value = ''; $('#ffClear').classList.remove('show'); renderFiles(S.files, 1); $('#ff').focus();
+});
+/* পাতা বদল */
+$('#files').addEventListener('click', e => {
+  const pg = e.target.closest('.pg');
+  if (!pg || pg.disabled) return;
+  renderFiles(S.filtered, +pg.dataset.pg);
+  $('#filesPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+/* ফাইল ও প্রিয় — দুই তালিকাতেই একই বোতাম, তাই একই হ্যান্ডলার */
+function wireList(sel) {
+  $(sel).addEventListener('click', e => {
+    const fav = e.target.closest('[data-act="fav"]');
+    const dl = e.target.closest('[data-act="dl"]');
+    if (fav) {
+      const f = findFile(fav.dataset.id);
+      if (!f) return;
+      const p = picked();
+      toggleFav({
+        id: f.id, name: f.name, size: f.size, mimeType: f.mimeType, tooBig: f.tooBig,
+        path: f.path || [p.dv?.name, p.dt?.name, p.up?.name, p.sv?.name].filter(Boolean)
+      });
+    } else if (dl) {
+      const f = findFile(dl.dataset.id);
+      if (f) download(f, dl);
+    }
+  });
+}
+wireList('#files');
+wireList('#favs');
+wireList('#recent');
+
+/* উপরের বোতাম দুটো — প্যানেল খোলা/বন্ধ */
+function togglePanel(sel) {
+  const p = $(sel);
+  p.classList.toggle('hidden');
+  if (!p.classList.contains('hidden')) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('#recentBtn').addEventListener('click', () => togglePanel('#recentPanel'));
+/* প্যানেলের ক্রস বোতাম */
+$$('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).classList.add('hidden')));
+$('#recentClear').addEventListener('click', () => {
+  S.recent = [];
+  localStorage.removeItem('mapx-recent');
+  renderRecent();
+  toast('সাম্প্রতিক তালিকা মুছে ফেলা হয়েছে');
+});
+
+/* নেট গেল কি ফিরল */
+function showOnline() {
+  const off = !navigator.onLine;
+  $('#offline').classList.toggle('hidden', !off);
+  if (off) setStatus('সংযোগ নেই', 'err');
+  else if (S.tree) setStatus(bnNum(S.total || 0) + ' ম্যাপ প্রস্তুত', 'live');
+}
+window.addEventListener('online', () => { showOnline(); toast('ইন্টারনেট সংযোগ ফিরেছে'); });
+window.addEventListener('offline', () => { showOnline(); toast('ইন্টারনেট সংযোগ নেই', 'err'); });
+
+$('#resetBtn').addEventListener('click', () => {
+  $('#selDiv').value = '';
+  onDivision();
+  ['#q', '#ff'].forEach(id => { $(id).value = ''; });
+  $$('.s-clear').forEach(b => b.classList.remove('show'));
+  $('#hits').innerHTML = '';
+  $('#recentPanel').classList.add('hidden');
+  $('#favPanel').classList.add('hidden');
+  updateNote();
+});
+
+/* theme */
+const themeBtn = $('#themeBtn');
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  themeBtn.innerHTML = t === 'dark' ? ICO.sun : ICO.moon;
+  themeBtn.title = t === 'dark' ? 'লাইট থিম' : 'ডার্ক থিম';
+  localStorage.setItem('mapx-theme', t);
+}
+setTheme(localStorage.getItem('mapx-theme')
+  || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+themeBtn.addEventListener('click', () =>
+  setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+$('#favBtn').addEventListener('click', () => togglePanel('#favPanel'));
+
+/* ================= init ================= */
+(async () => {
+  renderFavs();
+  renderRecent();
+  showOnline();
+  try {
+    S.tree = await loadTree();
+    fillSelect('#selDiv', (S.tree.divisions || []).map(d => ({ id: d.id, name: d.name })), 'বিভাগ বাছুন');
+    let files = 0;
+    for (const dv of S.tree.divisions || [])
+      for (const dt of dv.districts || [])
+        for (const up of dt.upazilas || [])
+          for (const s of up.surveys || []) files += s.count || 0;
+    S.total = files;
+    setStatus(bnNum(files) + ' ম্যাপ প্রস্তুত', 'live');
+  } catch (e) {
+    setStatus('ইনডেক্স আনা যায়নি', 'err');
+    fillSelect('#selDiv', [], 'লোড করা যায়নি');
+    $('#svNote').innerHTML = '<div class="alert">' + ICO.warn
+      + '<span>তালিকা আনা যায়নি — পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।</span></div>';
+  }
+})();
+})();
+</script>
 </body>
 </html>

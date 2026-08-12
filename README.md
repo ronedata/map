@@ -1,61 +1,135 @@
-# Google Drive File Browser
+# Map Explorer — সারাদেশের মৌজা ম্যাপ
 
-This project is a simple front-end application that allows users to browse and download files from a specific Google Drive folder. It utilizes the Google Drive API for file retrieval and provides a user-friendly interface for interaction.
+বাংলাদেশের ভৌগোলিক জরিপ ম্যাপ (মৌজা শিট) খুঁজে নামানোর একটি ওয়েব অ্যাপ।
+**বিভাগ → জেলা → উপজেলা → জরিপের ধরন** বেছে নিয়ে প্রয়োজনীয় ম্যাপ ফাইল নামান।
 
-## Project Structure
+- **১,৯৪,৩১৭টি ফাইল** · ৮ বিভাগ · ৬০ জেলা · ৪৫৪ উপজেলা · ১,০১২টি জরিপ ফোল্ডার
+- ধরন: PDF ১,০১,৪৪৪ · ছবি (JPEG/TIFF) ৯২,৭১১ — মোট প্রায় ১.৪ TB
+- বিল্ড স্টেপ নেই, কোনো বাইরের CDN বা লাইব্রেরি নেই — `index.html` একাই পুরো অ্যাপ
+
+## প্রজেক্ট স্ট্রাকচার
 
 ```
-google-drive-file-browser
-├── index.html
-├── styles.css
-├── app.js
+map/
+├── index.html              ← পুরো অ্যাপ (সব CSS/JS ইনলাইন)
+├── Code.gs                 ← Google Apps Script ব্যাকএন্ড (ডাউনলোড প্রক্সি)
+├── fonts/
+│   └── noto-bengali.woff2  ← ১০৫ KB — Noto Sans Bengali (ভেরিয়েবল)
+├── data/mouza-map/
+│   ├── tree.json           ← ১৪৫ KB — বিভাগ/জেলা/উপজেলা/জরিপ, ফাইলের নাম ছাড়া
+│   └── files/<surveyId>.json  ← ১,০১২টি — ওই ফোল্ডারের ফাইল, চাহিদামতো লোড
 └── README.md
 ```
 
-## Setup Instructions
+### বাংলা ফন্ট সাথে রাখা কেন
 
-### Step 1: Google Cloud Console Setup
+ইনস্টল করা ফন্টের ভরসায় থাকলে যুক্তাক্ষর ভেঙে যায় — Windows এর পুরনো `Vrinda`
+বা যে ফোনে ভালো বাংলা ফন্ট নেই, সেখানে লেখা পড়াই যায় না। তাই ফন্টটি
+প্রজেক্টের সাথেই রাখা। ভেরিয়েবল ফন্ট, তাই এক ফাইলেই সব ওজন (৪০০–৮০০)।
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project or select an existing project.
-3. Navigate to **APIs & Services > Library**.
-4. Search for "Google Drive API" and enable it for your project.
-5. Go to **APIs & Services > Credentials**.
-6. Click on **Create Credentials** and select **OAuth client ID**.
-7. Configure the consent screen by providing the necessary information.
-8. Under **Application type**, select **Web application**.
-9. Add your GitHub Pages URL (e.g., `https://<github-username>.github.io`) to the **Authorized JavaScript origins**.
-10. Click **Create** and download the `client_secret_*.json` file. Extract the `client_id` from this file.
+`unicode-range` দিয়ে কেবল বাংলা অক্ষরে সীমাবদ্ধ — ইংরেজি ও ফাইলের নাম
+সিস্টেম ফন্টেই থাকে, অতিরিক্ত কিছু নামে না।
 
-### Step 2: Update the Project Files
+> **Noto Sans Bengali** — SIL Open Font License 1.1 (সাথে রাখা ও বিতরণ করা যায়)
 
-1. Open `app.js` and replace the placeholder `const CLIENT_ID = 'REPLACE_WITH_CLIENT_ID';` with your actual client ID obtained from the previous step.
-2. If you have an API key, replace `YOUR_API_KEY` in `app.js` with your actual API key. This is optional but recommended for better quota management.
+## কেন দুই স্তরের ইনডেক্স
 
-### Step 3: Local Development
+পুরো ইনডেক্স ৪৪ MB। এক বিভাগের ফাইলও ১৪ MB পর্যন্ত — মোবাইলে একসাথে টানলে অচল হয়ে যেত।
+তাই ভাগ করা হয়েছে:
 
-1. Open the project folder in your code editor.
-2. Use a local server to run the project. You can use extensions like "Live Server" in your code editor.
-3. Open `index.html` in your browser to test the application.
+| ধাপ | কত ডেটা আসে |
+|---|---:|
+| পেজ খোলা | ১৪৫ KB (`tree.json`) |
+| বিভাগ/জেলা/উপজেলা বাছাই | ০ (কাঠামো আগেই এসেছে) |
+| জরিপ ফোল্ডার খোলা | ~২৭ KB |
 
-### Step 4: Deploying to GitHub Pages
+এক ম্যাপ পর্যন্ত পৌঁছাতে মোট প্রায় **২০০ KB**।
 
-1. Create a new repository on GitHub.
-2. Push your project files to the repository.
-3. Go to the repository settings.
-4. Scroll down to the **GitHub Pages** section.
-5. Select the branch you want to use (usually `main` or `master`) and click **Save**.
-6. Your application will be available at `https://<github-username>.github.io/<repository-name>`.
+### ডেটা ফরম্যাট
 
-## Security Best Practices
+`tree.json`:
 
-- **Client Secret Handling**: Never expose your `client_secret` in public repositories. Always keep it secure and private.
-- **Rate Limits**: Be aware of the Google Drive API rate limits. Implement error handling to manage quota exceeded errors gracefully.
-- **Large File Streaming**: For large files, consider implementing streaming downloads instead of loading the entire file into memory.
+```json
+{ "divisions": [ {
+    "id": "...", "name": "ঢাকা বিভাগ",
+    "districts": [ { "id": "...", "name": "...",
+      "upazilas": [ { "id": "...", "name": "...",
+        "surveys": [ { "id": "...", "name": "RS", "rawName": "RS 1", "count": 337 } ]
+      } ] } ] } ] }
+```
 
-## Notes
+`files/<surveyId>.json` — ওই জরিপ ফোল্ডারের ফাইলের তালিকা:
 
-- Ensure that you have the necessary permissions to access the files in the specified Google Drive folder.
-- Test the application thoroughly to handle any edge cases, such as empty folders or network errors.
+```json
+[ { "id": "...", "name": "133-Chakdhankora-1.pdf",
+    "mimeType": "application/pdf", "size": 5912345,
+    "subPath": "শিট ১-৫", "tooBig": true } ]
+```
 
-This README provides a comprehensive guide to setting up and deploying the Google Drive File Browser project. Enjoy browsing and downloading your files!
+`subPath` — জরিপ ফোল্ডারের নিচে ফাইলটি কোথায় ছিল (থাকতে পারে, নাও পারে)
+`tooBig` — ৩৫ MB এর বড়, প্রক্সিতে চলবে না
+
+> **ইনডেক্সে ফাইলের সরাসরি লিংক রাখা হয়নি** — ব্যবহারকারী কেবল প্রক্সির মধ্য দিয়েই
+> ফাইল পাবেন। নতুন কোড লেখার সময়ও সরাসরি লিংক তৈরি করা যাবে না।
+
+## ডাউনলোড সেটআপ (Apps Script প্রক্সি)
+
+ফাইলগুলো পাবলিক নয়, তাই ব্রাউজার থেকে সরাসরি আনা যায় না। `Code.gs` একটি
+ওয়েব অ্যাপ হিসেবে ডিপ্লয় করতে হয় — সেটি ফাইলের বাইট base64 আকারে ফেরত দেয়
+(CORS `*`, তাই ব্রাউজার থেকে সরাসরি ডাকা যায়)।
+
+1. [script.google.com](https://script.google.com) এ `Code.gs` এর কোড বসান
+2. **Deploy → New deployment → Web app**
+3. **Execute as: Me** এবং **Who has access: Anyone** — এই দুটো ঠিক না হলে
+   *"প্রদত্ত আইডি দিয়ে কোনও আইটেম খুঁজে পাওয়া যায়নি"* আসবে
+4. পাওয়া URL `index.html` এর `CONFIG.proxy` এ বসান
+
+```js
+const CONFIG = {
+  base: 'data/mouza-map/',
+  proxy: 'https://script.google.com/macros/s/.../exec',
+  proxyLimit: 35 * 1024 * 1024,
+  showLimit: 200
+};
+```
+
+## ⚠️ যে সীমাগুলো মনে রাখতে হবে
+
+1. **২১৭টি ফাইল নামানো যায় না** (>৩৫ MB)। Apps Script এর রেসপন্স সীমা ~৫০ MB,
+   base64 আকার ১.৩৩× বাড়ায়। সবচেয়ে বড় ফাইল ৭১৯.৮ MB। ইনডেক্সে `tooBig: true`
+   দিয়ে চিহ্নিত — অ্যাপে ওগুলোর বোতাম নিষ্ক্রিয় থাকে।
+
+2. **Apps Script এর দৈনিক কোটা** আছে। প্রতি ফাইলে গড়ে ১০ MB × ১.৩৩ = ১৩ MB
+   ট্রান্সফার — সাইট জনপ্রিয় হলে সীমা ছুঁয়ে যাবে।
+
+3. **ফাইলের নাম অনন্য নয়** — `1-1.jpg` ৩৬ বার আছে। মৌজার নাম ফাইলের নাম থেকে
+   বের করা যায় না, **ফোল্ডারের পথই ভরসা**।
+
+4. **এক ফোল্ডারে ২,০১০টি পর্যন্ত ফাইল** থাকতে পারে। অ্যাপ একবারে ২০০টি দেখায়,
+   বাকিটা ফিল্টার বক্স দিয়ে ছেঁকে নিতে হয়।
+
+## ডেভেলপমেন্ট
+
+- প্যাকেজ ম্যানেজার বা বিল্ড টুল নেই — `index.html` সরাসরি এডিট করুন
+- **`file://` থেকে চলবে না** (CORS)। লোকাল সার্ভার লাগবে:
+  `python -m http.server` অথবা Laragon/XAMPP
+- ফোল্ডারের নাম **`data`** (ছোট হাতের) — Windows এ পার্থক্য ধরা পড়ে না, কিন্তু
+  Linux হোস্টে `Data` লিখলে ৪০৪ আসবে
+
+### ইনডেক্স নতুন করে বানানো
+
+Drive এ নতুন ম্যাপ যোগ হলে ইনডেক্স আবার তৈরি করতে হবে:
+
+1. `Code.gs` এর `listChildren` API দিয়ে root ফোল্ডার থেকে শুরু করে BFS —
+   প্রতিটি ফোল্ডারে একটি কল, কয়েকটি সমান্তরাল, ব্যর্থ হলে ব্যাকঅফ
+2. ফল লাইনে লাইনে একটি `.jsonl` ফাইলে লিখলে কাজটি **পুনরারম্ভযোগ্য** হয়
+3. শেষে `tree.json` ও `files/*.json` আলাদা করে লিখুন
+
+সর্বশেষ ক্রল: **৩০ জুলাই ২০২৬** — ৩,৯৪১টি ফোল্ডার, সময় লেগেছিল ৫৫ মিনিট।
+
+> ফাইলগুলো Drive এর ৪ থেকে ১০ নম্বর স্তর পর্যন্ত ছড়ানো। কেবল ৫ম স্তর ধরলে
+> ৬৬,৫৬৫টি ফাইল বাদ পড়ে — আগের ইনডেক্সে ঠিক সেটাই হয়েছিল।
+
+## লাইসেন্স
+
+কোনো লাইসেন্স ঘোষণা করা হয়নি।
