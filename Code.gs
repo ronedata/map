@@ -1,97 +1,108 @@
-// Code.gs
-// ======================
-// প্রথমে এখানে আপনার প্রথম (root) folderId দিন
-const DEFAULT_FOLDER_ID = '1T1GWNPpszx44Mj42u7tLXaP3ac3t4yRb'; // <-- এখানে আপনার folderId দিন
+// Code.gs — মৌজা ম্যাপ প্রক্সি (Google Apps Script)
+// =============================================================================
+// ওয়েব অ্যাপ হিসেবে ডিপ্লয় করতে হয়। সাইট এই একটি ঠিকানার মধ্য দিয়েই ফাইল পায় —
+// Drive এর লিংক কোথাও দেখানো হয় না।
+//
+// ডিপ্লয়ের সেটিং (ভুল হলে "আইটেম খুঁজে পাওয়া যায়নি" আসবে):
+//   Execute as        : Me
+//   Who has access    : Anyone
+//
+// ⚠️ কোড বদলানোর পর: Deploy → Manage deployments → পেন্সিল আইকন →
+//    Version: New version → Deploy। এতে ঠিকানা একই থাকে।
+//    "New deployment" দিলে নতুন ঠিকানা তৈরি হবে আর সাইট ভেঙে যাবে।
+// =============================================================================
+
+/** ম্যাপের সবচেয়ে উপরের (root) ফোল্ডার */
+const DEFAULT_FOLDER_ID = '1T1GWNPpszx44Mj42u7tLXaP3ac3t4yRb';
 
 /**
- * doGet handler: supports:
- *  - action=listChildren&folderId=...  -> returns immediate children (folders + files)
- *  - action=download&fileId=...        -> returns base64 payload for small files (optional)
+ * সমর্থিত অনুরোধ:
+ *   ?action=download&fileId=…              → ফাইলের বাইট base64 এ
+ *   ?action=listChildren&folderId=…        → ওই ফোল্ডারের ভেতরের নাম-তালিকা
+ *   ?action=ping                           → সার্ভার সাড়া দিচ্ছে কি না
  */
 function doGet(e) {
   try {
-    const params = e && e.parameter ? e.parameter : {};
-    const action = (params.action || 'listChildren').toLowerCase();
+    const params = (e && e.parameter) ? e.parameter : {};
+    const action = String(params.action || 'listChildren').toLowerCase();
 
-    if (action === 'download' && params.fileId) {
+    if (action === 'ping') {
+      return json({ success: true, data: { ok: true, at: new Date().toISOString() } });
+    }
+
+    if (action === 'download') {
+      if (!params.fileId) return json({ success: false, error: 'fileId দেওয়া হয়নি' });
       return proxyDownload(params.fileId);
     }
 
-    // default: list children of folderId (or DEFAULT_FOLDER_ID)
-    const folderId = params.folderId || DEFAULT_FOLDER_ID;
-    const data = listChildren(folderId);
-    const out = ContentService.createTextOutput(JSON.stringify({ success: true, data: data }));
-    out.setMimeType(ContentService.MimeType.JSON);
-    return out;
+    if (action === 'listchildren') {
+      return json({ success: true, data: listChildren(params.folderId || DEFAULT_FOLDER_ID) });
+    }
+
+    // আগে অজানা action চুপচাপ ফোল্ডার তালিকা দিত — ভুল ধরা পড়ত না
+    return json({ success: false, error: 'অজানা action: ' + action });
 
   } catch (err) {
-    const errorObj = { success: false, error: err.message };
-    const out = ContentService.createTextOutput(JSON.stringify(errorObj));
-    out.setMimeType(ContentService.MimeType.JSON);
-    return out;
+    return json({ success: false, error: err.message });
   }
 }
 
+/** JSON উত্তর বানানোর ছোট হেল্পার */
+function json(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 /**
- * Return immediate children (folders and files) for a given folderId
- * Response:
- * { id, name, type: 'folder'|'file', (for file: mimeType,size,url) }
+ * ফোল্ডারের ভেতরের ফোল্ডার ও ফাইলের তালিকা।
+ *
+ * ⚠️ ফাইলের Drive লিংক (getUrl) ইচ্ছে করেই বাদ দেওয়া হয়েছে — ইউজারের নির্দেশ:
+ *    "Drive এর লিংক সবাইকে দেখানো যাবে না"। এই ঠিকানা পাবলিক, তাই এখানে লিংক
+ *    রাখলে যে কেউ পুরো ট্রি হেঁটে সব ফাইলের সরাসরি লিংক বের করে ফেলতে পারত।
+ *    নতুন কোড লেখার সময়ও getUrl() ফেরত দেওয়া যাবে না।
  */
 function listChildren(folderId) {
-  var folder = DriveApp.getFolderById(folderId);
-  var result = {
-    id: folder.getId(),
-    name: folder.getName(),
-    folders: [],
-    files: []
-  };
+  const folder = DriveApp.getFolderById(folderId);
+  const result = { id: folder.getId(), name: folder.getName(), folders: [], files: [] };
 
-  // folders
-  var subfolders = folder.getFolders();
+  const subfolders = folder.getFolders();
   while (subfolders.hasNext()) {
-    var sf = subfolders.next();
-    result.folders.push({
-      id: sf.getId(),
-      name: sf.getName(),
-      type: 'folder'
-    });
+    const sf = subfolders.next();
+    result.folders.push({ id: sf.getId(), name: sf.getName(), type: 'folder' });
   }
 
-  // files
-  var files = folder.getFiles();
+  const files = folder.getFiles();
   while (files.hasNext()) {
-    var f = files.next();
+    const f = files.next();
     result.files.push({
       id: f.getId(),
       name: f.getName(),
       mimeType: f.getMimeType(),
-      size: f.getSize(),
-      url: f.getUrl() // Drive URL (may require permissions)
+      size: f.getSize()
     });
   }
-
   return result;
 }
 
 /**
- * Optional: Proxy download (base64) for smaller files.
- * WARNING: Apps Script has response size limits (~50MB or less depending), so
- * do not use for very large files.
+ * ফাইলের বাইট base64 এ ফেরত দেয়।
+ * উত্তরের গড়ন আগের মতোই: { success, data: { fileName, mimeType, size, base64 } }
  *
- * Returns JSON:
- * { fileName, mimeType, base64 }
+ * মেমরি: একই ফাইল যেন বারবার কপি না হয়। JSON.stringify() দিলে বিশাল base64
+ * স্ট্রিংটার আরেকটি কপি তৈরি হতো, তাই উত্তরটি হাতে জোড়া হচ্ছে — base64 এর
+ * অক্ষরগুলোয় (A–Z a–z 0–9 + / =) JSON এ পালানোর মতো কিছু নেই, তাই নিরাপদ।
  */
 function proxyDownload(fileId) {
-  var file = DriveApp.getFileById(fileId);
-  var blob = file.getBlob();
-  var bytes = blob.getBytes();
-  var encoded = Utilities.base64Encode(bytes);
-  var payload = {
-    fileName: file.getName(),
-    mimeType: blob.getContentType(),
-    base64: encoded
-  };
-  var out = ContentService.createTextOutput(JSON.stringify({ success: true, data: payload }));
-  out.setMimeType(ContentService.MimeType.JSON);
-  return out;
+  const file = DriveApp.getFileById(fileId);
+  const blob = file.getBlob();
+  const encoded = Utilities.base64Encode(blob.getBytes());
+
+  const body = '{"success":true,"data":{'
+    + '"fileName":' + JSON.stringify(file.getName())
+    + ',"mimeType":' + JSON.stringify(blob.getContentType() || 'application/octet-stream')
+    + ',"size":' + file.getSize()
+    + ',"base64":"' + encoded + '"}}';
+
+  return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
 }
