@@ -266,6 +266,14 @@ body.locked{overflow:hidden}
 .bar{height:10px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin:9px 0 2px;border:1px solid var(--line)}
 .bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),var(--primary-2));transition:width .25s ease}
 .bar.fail span{background:var(--accent)}
+/* প্রস্তুতির ধাপ — সার্ভার এখনো এক বাইটও পাঠায়নি, তাই সত্যিকারের অগ্রগতি
+   জানা নেই। ডোরাকাটা নড়াচড়া দিয়ে বোঝানো হয় কাজ চলছে, কিন্তু কতদূর নয়। */
+.bar.prep span{
+  background:repeating-linear-gradient(115deg,var(--primary) 0 14px,var(--primary-2) 14px 28px);
+  background-size:56px 100%;
+  animation:stripes 1.1s linear infinite;
+}
+@keyframes stripes{from{background-position:0 0}to{background-position:56px 0}}
 /* ============ খালি অবস্থা ============ */
 .empty{padding:30px 20px;text-align:center;color:var(--muted)}
 .empty .e-ico{width:52px;height:52px;margin:0 auto 12px;border-radius:16px;display:grid;place-items:center;background:var(--surface-3);color:var(--muted);border:1px dashed var(--line-strong)}
@@ -934,21 +942,27 @@ async function download(f, btn) {
     /* ধাপে পৌঁছাতে দ্রুত, তারপর পরের ধাপের আগ পর্যন্ত ধীরে হামাগুড়ি —
        নইলে সার্ভারের অপেক্ষার পুরো সময়টা সংখ্যাটা জমে থাকে */
     if (cur < target) cur = Math.min(target, cur + Math.max(0.6, (target - cur) * 0.14));
-    else if (cur < ceil) cur = Math.min(ceil, cur + 0.07);
+    /* সীমার দিকে এগোয়, কাছে গেলে ধীর হয় — অপেক্ষা যত দীর্ঘই হোক সংখ্যাটা
+       একদম থেমে আছে বলে মনে হয় না, আবার সীমা ছাড়িয়েও যায় না */
+    else if (cur < ceil) cur = Math.min(ceil, cur + Math.max(0.02, (ceil - cur) * 0.004));
     else return;
     paint();
   }, 60);
   /* pct null দিলে কেবল বার্তা বদলায় — সমান্তরাল টুকরোর মধ্যে একটি রিট্রাই
      হলে যেন সামগ্রিক অগ্রগতি পিছিয়ে না যায় */
+  /* সংখ্যাটা কখনো পিছায় না — প্রস্তুতির সময় ২% পর্যন্ত এগোনোর পর প্রথম কয়েক
+     KB এলে হিসাব ০% হয়, তখন পিছিয়ে গেলে দেখতে খারাপ লাগে */
   const stage = (pct, top, text) => {
     if (text) msg = text;
-    if (pct != null) { target = pct; ceil = top; if (pct < cur) cur = pct; }
+    if (pct != null) { target = Math.max(pct, cur); ceil = Math.max(top, cur); }
     paint();
   };
   const finish = (pct, text, cls) => {
     clearInterval(timer);
     cur = target = ceil = pct; msg = text; paint();
-    if (cls) { $('#dlPct').classList.add(cls); if (cls === 'fail') $('#dlBar').parentElement.classList.add('fail'); }
+    const bar = $('#dlBar');
+    if (bar) bar.parentElement.classList.remove('prep');   // শেষ হলে ডোরাকাটা থামে
+    if (cls) { $('#dlPct').classList.add(cls); if (cls === 'fail') bar.parentElement.classList.add('fail'); }
     /* আর বাতিল করার কিছু নেই — বোতামটি এখন শুধু বন্ধের */
     const x = $('#dlClose');
     x.title = 'বন্ধ করুন';
@@ -970,17 +984,25 @@ async function download(f, btn) {
        নামানো বাইটকে এই হিসাবে ভাগ করলেই আসল অগ্রগতি পাওয়া যায়। */
     const wire = n => Math.ceil(n / 3) * 4 + 200;
     const show = (done, of) => {
+      /* প্রথম বাইট এসেছে — ডোরাকাটা থামিয়ে আসল অগ্রগতিতে ফিরি */
+      const bar = $('#dlBar');
+      if (bar) bar.parentElement.classList.remove('prep');
       const pct = of ? Math.min(96, Math.round(done / of * 96)) : 0;
       stage(pct, pct, 'নামানো হচ্ছে — ' + fmtBytes(done) + ' / ' + fmtBytes(of));
     };
 
+    /* Apps Script প্রথমে পুরো ফাইলটা পড়ে base64 এ রূপান্তর করে, তারপর পাঠাতে
+       শুরু করে — তাই প্রথম বাইট আসতেই অনেক দেরি হয়। ততক্ষণ "প্রস্তুত করা
+       হচ্ছে" দেখানো হয়, বাইট আসা শুরু হলেই MB এর হিসাব। */
+    const PREP = 'ম্যাপ প্রস্তুত করা হচ্ছে…';
+
     if (!big) {
       /* ছোট ফাইল (১,৯৪,৩১৭ এর মধ্যে ১,৯৪,১০০টি) — এক অনুরোধেই।
          উত্তরটা স্ট্রিম করে পড়ায় কত বাইট এল তা চলতে চলতেই জানা যায়। */
-      stage(2, 6, 'সার্ভারে অনুরোধ পাঠানো হচ্ছে…');
+      stage(2, 22, PREP);
       const expect = wire(total);
       const j = await getChunk(f.id, null, null, ac.signal,
-        n => stage(2, 6, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…'),
+        n => stage(null, null, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…'),
         got => show(Math.min(total, Math.floor(got / 4 * 3)), total || Math.floor(expect / 4 * 3)));
       if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
 
@@ -1002,7 +1024,7 @@ async function download(f, btn) {
          আর ফাইলের আসল আকার কত। না জেনে সমান্তরাল অনুরোধ পাঠালে পুরনো সার্ভারে
          একই ফাইল কয়েকবার নামত, আর ইনডেক্সের আকার বাসি হলে সীমার বাইরে
          অনুরোধ গিয়ে ডাউনলোডই ব্যর্থ হতো। */
-      show(0, total);
+      stage(2, 18, PREP);
       const head = await getChunk(f.id, 0, CONFIG.chunk, ac.signal, retryMsg,
         got => { doneBytes[0] = Math.min(CONFIG.chunk, Math.floor(got / 4 * 3)); tick(); });
       if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
@@ -1077,7 +1099,8 @@ function openModal(f) {
     '<div class="dl-name" title="' + esc(f.name) + '">' + esc(f.name) + '</div>'
     + '<div class="dl-sub">' + fmtBytes(f.size) + '</div>'
     + '<div class="pctrow"><span class="pct" id="dlPct">০%</span><span class="msg" id="dlMsg">শুরু হচ্ছে…</span></div>'
-    + '<div class="bar"><span id="dlBar" style="width:2%"></span></div>';
+    /* prep — প্রথম বাইট আসা পর্যন্ত ডোরাকাটা চলতে থাকবে */
+    + '<div class="bar prep"><span id="dlBar" style="width:2%"></span></div>';
   $('#dlModal').classList.remove('hidden');
   document.body.classList.add('locked');
   $('#dlClose').focus();
