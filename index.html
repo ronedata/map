@@ -499,6 +499,9 @@ const CONFIG = {
        + 'qg3jTgawC_eysmTzVkvKZ6jl69h5I0JK3csRaL0j/exec',
   /* এক অনুরোধে এর চেয়ে বড় হলে টুকরো করে আনা হয় (base64 এ ১.৩৩× বাড়ে) */
   chunk: 12 * 1024 * 1024,
+  /* কয়টি টুকরো একসাথে — বেশি দিলে দ্রুত, কিন্তু Apps Script এ একসাথে বেশি
+     অনুরোধ গেলে সে আরও ধীর হয়ে যায়। ৩ ভারসাম্যপূর্ণ। */
+  parallel: 3,
   /* এর চেয়ে বড় ফাইল ব্রাউজারে জোড়া দেওয়া বাস্তবসম্মত নয় — ১,৯৪,৩১৭টির
      মধ্যে মাত্র ১৮টি এর বেশি (সবচেয়ে বড় ৯০৫ MB) */
   maxSize: 200 * 1024 * 1024,
@@ -850,6 +853,30 @@ function findFile(id) {
 
 /* ================= ডাউনলোড ================= */
 
+/**
+ * উত্তরটা এক টানে না নিয়ে স্ট্রিম করে পড়ে — ফলে কত বাইট এল তা চলতে চলতেই
+ * জানা যায় (res.text() দিলে সব আসার আগে কিছুই জানা যেত না)।
+ * @param {Response} res
+ * @param {function(number)} onBytes প্রতিবার মোট প্রাপ্ত বাইট জানায়
+ */
+async function readStream(res, onBytes) {
+  if (!res.body || !res.body.getReader) return res.text();   // পুরনো ব্রাউজার
+  const reader = res.body.getReader();
+  const parts = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    got += value.length;
+    if (onBytes) onBytes(got);
+  }
+  const all = new Uint8Array(got);
+  let at = 0;
+  for (const p of parts) { all.set(p, at); at += p.length; }
+  return new TextDecoder().decode(all);
+}
+
 /** base64 → বাইট */
 function decodeB64(b64) {
   const bin = atob(b64 || '');
@@ -863,7 +890,7 @@ function decodeB64(b64) {
  * start/len না দিলে পুরনো আচরণ — পুরো ফাইল।
  * @returns {Promise<{fileName,mimeType,size,base64,start?,len?,eof?}>}
  */
-async function getChunk(fileId, start, len, signal, onRetry) {
+async function getChunk(fileId, start, len, signal, onRetry, onBytes) {
   let url = CONFIG.proxy + '?action=download&fileId=' + encodeURIComponent(fileId);
   if (len != null) url += '&start=' + start + '&len=' + len;
   const res = await fetchRetry(url, {
@@ -873,7 +900,10 @@ async function getChunk(fileId, start, len, signal, onRetry) {
     bust: true,
     onRetry
   });
-  const j = await res.json();
+  const text = await readStream(res, onBytes);
+  let j;
+  try { j = JSON.parse(text); }
+  catch (e) { throw new Error('সার্ভার সঠিক উত্তর দেয়নি'); }
   if (!j.success || !j.data || j.data.base64 === undefined) {
     throw new Error(j.error || 'ফাইলটি আনা যায়নি');
   }
@@ -908,9 +938,11 @@ async function download(f, btn) {
     else return;
     paint();
   }, 60);
+  /* pct null দিলে কেবল বার্তা বদলায় — সমান্তরাল টুকরোর মধ্যে একটি রিট্রাই
+     হলে যেন সামগ্রিক অগ্রগতি পিছিয়ে না যায় */
   const stage = (pct, top, text) => {
-    target = pct; ceil = top; if (text) msg = text;
-    if (pct < cur) cur = pct;
+    if (text) msg = text;
+    if (pct != null) { target = pct; ceil = top; if (pct < cur) cur = pct; }
     paint();
   };
   const finish = (pct, text, cls) => {
@@ -930,53 +962,80 @@ async function download(f, btn) {
   }
 
   try {
-    const big = (Number(f.size) || 0) > CONFIG.chunk;
+    const total = Number(f.size) || 0;
+    const big = total > CONFIG.chunk;
     let name = f.name, mime = f.mimeType, blob;
 
+    /* base64 এ বাইট ১.৩৩× বাড়ে; তার সাথে JSON মোড়কের সামান্য কিছু।
+       নামানো বাইটকে এই হিসাবে ভাগ করলেই আসল অগ্রগতি পাওয়া যায়। */
+    const wire = n => Math.ceil(n / 3) * 4 + 200;
+    const show = (done, of) => {
+      const pct = of ? Math.min(96, Math.round(done / of * 96)) : 0;
+      stage(pct, pct, 'নামানো হচ্ছে — ' + fmtBytes(done) + ' / ' + fmtBytes(of));
+    };
+
     if (!big) {
-      /* ছোট ফাইল (১,৯৪,৩১৭ এর মধ্যে ১,৯৪,১০০টি) — পুরনো পথ, এক অনুরোধেই।
-         প্রক্সি একবারেই পুরো JSON পাঠায়, তাই সত্যিকারের বাইট-প্রগ্রেস নেই;
-         stage(লক্ষ্য, যতদূর হামাগুড়ি, বার্তা) দিয়ে আনুমানিক গতি দেখানো হয়। */
-      stage(5, 30, 'সার্ভারে অনুরোধ পাঠানো হচ্ছে…');
+      /* ছোট ফাইল (১,৯৪,৩১৭ এর মধ্যে ১,৯৪,১০০টি) — এক অনুরোধেই।
+         উত্তরটা স্ট্রিম করে পড়ায় কত বাইট এল তা চলতে চলতেই জানা যায়। */
+      stage(2, 6, 'সার্ভারে অনুরোধ পাঠানো হচ্ছে…');
+      const expect = wire(total);
       const j = await getChunk(f.id, null, null, ac.signal,
-        n => stage(8, 30, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…'));
-      stage(35, 58, 'সার্ভার থেকে ফাইল আসছে…');
+        n => stage(2, 6, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…'),
+        got => show(Math.min(total, Math.floor(got / 4 * 3)), total || Math.floor(expect / 4 * 3)));
       if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
 
-      stage(62, 86, 'ফাইল ডিকোড হচ্ছে…');
+      stage(97, 98, 'ফাইল প্রস্তুত হচ্ছে…');
       name = j.fileName || name; mime = j.mimeType || mime;
-      const bytes = decodeB64(j.base64);
-
-      if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
-      stage(92, 97, 'প্রস্তুত হচ্ছে…');
-      blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+      blob = new Blob([decodeB64(j.base64)], { type: mime || 'application/octet-stream' });
 
     } else {
-      /* বড় ফাইল টুকরো টুকরো করে — এখানে কত বাইট এল তা জানা যায়, তাই
-         শতাংশটা আনুমানিক নয়, সত্যিকারের। টুকরোগুলো Blob হিসেবে জমে,
-         ব্রাউজার দরকারে ডিস্কে রাখে — তাই ২০০ MB ফাইলেও মেমরি টেকে। */
+      /* বড় ফাইল — কয়েকটি টুকরো একসাথে আনা হয়, নইলে ১১৮ MB ফাইলে ১০টি
+         অনুরোধ একের পর এক চলত। টুকরোগুলো Blob হিসেবে জমে (ব্রাউজার দরকারে
+         ডিস্কে রাখে), তাই ২০০ MB ফাইলেও মেমরি টেকে। */
       const parts = [];
-      let start = 0, total = Number(f.size) || 0;
-      while (start < total) {
-        const pct = Math.round(start / total * 96);
-        stage(pct, pct, 'নামানো হচ্ছে — ' + fmtBytes(start) + ' / ' + fmtBytes(total));
-        const j = await getChunk(f.id, start, CONFIG.chunk, ac.signal,
-          n => stage(pct, pct, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…'));
-        if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
-        name = j.fileName || name; mime = j.mimeType || mime;
-        if (j.size) total = j.size;
+      const doneBytes = [];
+      let real = total;
+      const tick = () => show(doneBytes.reduce((a, b) => a + (b || 0), 0), real);
+      const retryMsg = n => stage(null, null, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…');
 
-        const bytes = decodeB64(j.base64);
-        parts.push(bytes);
-        /* সার্ভার start/len না পাঠালে বুঝতে হবে পুরনো সংস্করণ চলছে —
-           সে পুরো ফাইলটাই পাঠিয়ে দিয়েছে, তাই এখানেই থামি */
-        if (j.len === undefined) break;
-        start += bytes.length;
-        if (j.eof || bytes.length === 0) break;
+      /* প্রথম টুকরোটি একা — এতে দুটো জিনিস জানা যায়: সার্ভার টুকরো বোঝে কি না,
+         আর ফাইলের আসল আকার কত। না জেনে সমান্তরাল অনুরোধ পাঠালে পুরনো সার্ভারে
+         একই ফাইল কয়েকবার নামত, আর ইনডেক্সের আকার বাসি হলে সীমার বাইরে
+         অনুরোধ গিয়ে ডাউনলোডই ব্যর্থ হতো। */
+      show(0, total);
+      const head = await getChunk(f.id, 0, CONFIG.chunk, ac.signal, retryMsg,
+        got => { doneBytes[0] = Math.min(CONFIG.chunk, Math.floor(got / 4 * 3)); tick(); });
+      if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
+      name = head.fileName || name; mime = head.mimeType || mime;
+      if (head.size) real = head.size;
+      parts[0] = decodeB64(head.base64);
+      doneBytes[0] = parts[0].length;
+      tick();
+
+      /* len ফেরত না এলে পুরনো সংস্করণ চলছে — সে পুরো ফাইলটাই পাঠিয়ে দিয়েছে */
+      if (head.len !== undefined && !head.eof) {
+        const jobs = [];
+        for (let s = parts[0].length; s < real; s += CONFIG.chunk) jobs.push(s);
+        let next = 0;
+        const worker = async () => {
+          for (;;) {
+            const i = next++;
+            if (i >= jobs.length) return;
+            const slot = i + 1;
+            const j = await getChunk(f.id, jobs[i], CONFIG.chunk, ac.signal, retryMsg,
+              got => { doneBytes[slot] = Math.min(CONFIG.chunk, Math.floor(got / 4 * 3)); tick(); });
+            if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
+            parts[slot] = decodeB64(j.base64);
+            doneBytes[slot] = parts[slot].length;
+            tick();
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONFIG.parallel, jobs.length) }, worker));
       }
+
       if (ac.signal.aborted) throw new DOMException('বাতিল', 'AbortError');
       stage(98, 99, 'জোড়া দেওয়া হচ্ছে…');
-      blob = new Blob(parts, { type: mime || 'application/octet-stream' });
+      blob = new Blob(parts.filter(Boolean), { type: mime || 'application/octet-stream' });
     }
 
     const url = URL.createObjectURL(blob);
