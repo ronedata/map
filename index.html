@@ -501,8 +501,11 @@ const CONFIG = {
   proxyLimit: 35 * 1024 * 1024,
   /* এক ফোল্ডারে ২,০১০টি পর্যন্ত ফাইল আছে — পাতা ভাগ করে দেখানো হয় */
   perPage: 50,
-  /* নেট গেলে বা সার্ভার ধীর হলে কতবার আবার চেষ্টা করবে */
-  retries: 3
+  /* Google এর কনটেন্ট সার্ভার এলোমেলোভাবে ৪০৪ দেয় ("এই মুহূর্তে ফাইলটি খোলা
+     গেল না")। মাপা হয়েছে: ফাইলের আকার বা কোন ফাইল — কিছুর সাথেই সম্পর্ক নেই,
+     প্রতি চেষ্টায় সফলতা ~৩০%। ব্যর্থতাটা সাথে সাথে ফেরে (ফাইল নামে না), তাই
+     বেশিবার চেষ্টা করা সস্তা — ১২ বারে সফলতার সম্ভাবনা ~৯৯%। */
+  retries: 12
 };
 
 /* ================= state ================= */
@@ -598,13 +601,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
    opts.expectJson — উত্তর JSON না হলে (Google এর HTML এরর পাতা) আবার চেষ্টা। */
 async function fetchRetry(url, opts = {}) {
-  const { onRetry, signal, softClientError, expectJson, tries = CONFIG.retries } = opts;
+  const { onRetry, signal, softClientError, expectJson, bust, tries = CONFIG.retries } = opts;
   let last;
   for (let i = 0; i < tries; i++) {
     if (signal && signal.aborted) throw new DOMException('বাতিল', 'AbortError');
     if (!navigator.onLine) throw new Error('ইন্টারনেট সংযোগ নেই');
     try {
-      const res = await fetch(url, signal ? { signal } : undefined);
+      /* bust — প্রতিবার আলাদা প্যারামিটার, যাতে ব্যর্থ উত্তরটা ক্যাশ থেকে ফিরে না আসে */
+      const u = bust ? url + '&_=' + Date.now() + '_' + i : url;
+      const res = await fetch(u, signal ? { signal } : undefined);
       if (res.ok) {
         if (expectJson && !String(res.headers.get('content-type') || '').includes('json')) {
           last = new Error('সার্ভার ভুল উত্তর দিয়েছে');
@@ -622,7 +627,9 @@ async function fetchRetry(url, opts = {}) {
       if (/পাওয়া যায়নি/.test(e.message)) throw e;
     }
     if (i < tries - 1) {
-      const wait = 700 * Math.pow(2, i);
+      /* অপেক্ষা দ্বিগুণ হয়, তবে ২.৫ সেকেন্ডেই থেমে যায় — ১২ বার চেষ্টাতেও
+         মোট অপেক্ষা ~২৩ সেকেন্ডের বেশি নয় */
+      const wait = Math.min(2500, 400 * Math.pow(2, i));
       if (onRetry) onRetry(i + 2, wait);
       await sleep(wait);
     }
@@ -894,9 +901,8 @@ async function download(f, btn) {
       signal: ac.signal,
       softClientError: true,   // রিডাইরেক্টের সাময়িক ৪০৪ — আবার চেষ্টা করলেই আসে
       expectJson: true,
-      tries: 4,
-      onRetry: (n, wait) => stage(8, 30,
-        'সার্ভার সাড়া দেয়নি — ' + toBn(Math.round(wait / 1000)) + ' সেকেন্ড পর ' + toBn(n) + 'বার চেষ্টা…')
+      bust: true,
+      onRetry: n => stage(8, 30, 'সার্ভার সাড়া দেয়নি — আবার চেষ্টা করছি (' + toBn(n) + ')…')
     });
 
     stage(35, 58, 'সার্ভার থেকে ফাইল আসছে…');
